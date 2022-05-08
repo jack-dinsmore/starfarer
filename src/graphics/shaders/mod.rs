@@ -1,31 +1,24 @@
 use glow::*;
 use std::ops::Drop;
+use cgmath::Matrix4;
 
 pub struct ShaderManager<'a> {
     gl: &'a glow::Context,
-    example_shader: NativeProgram,
+    object_shader: NativeProgram,
 }
 
 /// Enumerates all the shaders we have coded
-pub enum Shader {
-    Example(f32),
+pub enum Shader<'a> {
+    Object(&'a Matrix4<f32>),
 }
 
-impl Shader {
-    fn get_source(self) -> Vec<(u32, &'static str)> {
-        match self {
-            Example => vec![
-                (glow::VERTEX_SHADER, &include_str!("vertex.hlsl")), 
-                (glow::FRAGMENT_SHADER, &include_str!("fragment.hlsl"))
-            ]
-        }
-    }
-
+impl<'a> Shader<'a> {
     fn set_uniforms(self, gl: &glow::Context, program: NativeProgram) {
         unsafe{
             match self {
-                Self::Example(blue) => {
-                    gl.uniform_1_f32(gl.get_uniform_location(program, "blue").as_ref(), blue);
+                Self::Object(mvp) => {
+                    let raw = core::slice::from_raw_parts((&cgmath::conv::array4x4(*mvp) as *const [[f32; 4]; 4]) as *const f32, 16);
+                    gl.uniform_matrix_4_f32_slice(gl.get_uniform_location(program, "mvp").as_ref(), false, raw);
                 },
             }
         }
@@ -36,23 +29,23 @@ impl Shader {
 impl<'a> ShaderManager<'a> {
     pub fn new(gl: &'a glow::Context) -> ShaderManager<'a> {
 
-        // Initialize the example shader
-        let example_shader = Self::init_shader(gl, vec![
-            (glow::VERTEX_SHADER, &include_str!("vertex.hlsl")), 
-            (glow::FRAGMENT_SHADER, &include_str!("fragment.hlsl"))
+        // Initialize the Object shader
+        let object_shader = Self::init_shader(gl, vec![
+            (glow::VERTEX_SHADER, &include_str!("object/vertex.hlsl")), 
+            (glow::FRAGMENT_SHADER, &include_str!("object/fragment.hlsl"))
         ]);
 
-        ShaderManager { gl, example_shader }
+        ShaderManager { gl, object_shader }
     }
 
-    pub fn load_example(&self) {
+    pub fn load_object(&self) {
         unsafe {
-            self.gl.use_program(Some(self.example_shader));
+            self.gl.use_program(Some(self.object_shader));
         }
     }
 
     pub fn set_uniforms(&self, shader: Shader) {
-        shader.set_uniforms(self.gl, self.example_shader);
+        shader.set_uniforms(self.gl, self.object_shader);
     }
 
     /// Create a program id for a shader
@@ -97,7 +90,7 @@ impl<'a> ShaderManager<'a> {
 impl<'a> Drop for ShaderManager<'a> {
     fn drop(&mut self) {
         unsafe {
-            self.gl.delete_program(self.example_shader);
+            self.gl.delete_program(self.object_shader);
         }
     }
 }
