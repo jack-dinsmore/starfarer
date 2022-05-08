@@ -6,4 +6,4 @@ One we get the triangle to be 3D, we should come back to this. Try enabling / di
 
 ## May 8
 
-Rendered a cube. Next steps are to make vertex and index buffers and render from those, or load actual models, or do shading.
+Rendered a cube. Next steps are to figure out why the model loading isn't loading the index lists, then render textures.

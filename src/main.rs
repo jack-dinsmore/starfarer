@@ -3,6 +3,8 @@ mod util;
 
 use glow::*;
 use graphics::shaders::{ShaderManager, Shader};
+use graphics::models::Model;
+
 use glow_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text, Region};
 use cgmath::{Matrix4, Point3, Vector3, Vector4, PerspectiveFov, Rad};
 
@@ -31,7 +33,7 @@ fn main() {
         //let mut glyph_brush = GlyphBrushBuilder::using_font(inconsolata).build(&gl);
 
         // Create a vertex buffer and vertex array object
-        let (vbo, vao) = create_vertex_buffer(&gl);
+        let model = Model::new(&gl, include_str!("assets/cube/cube.obj"));
 
         gl.enable(glow::FRAMEBUFFER_SRGB);
         gl.enable(glow::BLEND);
@@ -66,16 +68,13 @@ fn main() {
             glyph_brush.draw_queued(&gl, 1024, 769).expect("Draw queued");*/
             shader_manager.set_uniforms(Shader::Object(&mvp));
             shader_manager.load_object();
-            gl.draw_arrays(glow::TRIANGLES, 0, 12 * 3);
+
+            model.draw(&gl);
 
             window.gl_swap_window();
         }
-
-        // Clean up
-        gl.delete_vertex_array(vao);
-        gl.delete_buffer(vbo);
+        model.clean(&gl);
     }
-
 }
 
 unsafe fn create_sdl2_context() -> (
@@ -100,62 +99,4 @@ unsafe fn create_sdl2_context() -> (
     let event_loop = sdl.event_pump().unwrap();
 
     (gl, window, event_loop, gl_context)
-}
-
-unsafe fn create_vertex_buffer(gl: &glow::Context) -> (NativeBuffer, NativeVertexArray) {
-    let triangle_vertices = [
-        -1.0f32,-1.0,-1.0,
-		-1.0,-1.0, 1.0,
-		-1.0, 1.0, 1.0,
-		 1.0, 1.0,-1.0,
-		-1.0,-1.0,-1.0,
-		-1.0, 1.0,-1.0,
-		 1.0,-1.0, 1.0,
-		-1.0,-1.0,-1.0,
-		 1.0,-1.0,-1.0,
-		 1.0, 1.0,-1.0,
-		 1.0,-1.0,-1.0,
-		-1.0,-1.0,-1.0,
-		-1.0,-1.0,-1.0,
-		-1.0, 1.0, 1.0,
-		-1.0, 1.0,-1.0,
-		 1.0,-1.0, 1.0,
-		-1.0,-1.0, 1.0,
-		-1.0,-1.0,-1.0,
-		-1.0, 1.0, 1.0,
-		-1.0,-1.0, 1.0,
-		 1.0,-1.0, 1.0,
-		 1.0, 1.0, 1.0,
-		 1.0,-1.0,-1.0,
-		 1.0, 1.0,-1.0,
-		 1.0,-1.0,-1.0,
-		 1.0, 1.0, 1.0,
-		 1.0,-1.0, 1.0,
-		 1.0, 1.0, 1.0,
-		 1.0, 1.0,-1.0,
-		-1.0, 1.0,-1.0,
-		 1.0, 1.0, 1.0,
-		-1.0, 1.0,-1.0,
-		-1.0, 1.0, 1.0,
-		 1.0, 1.0, 1.0,
-		-1.0, 1.0, 1.0,
-		 1.0,-1.0, 1.0
-    ];
-    let triangle_vertices_u8: &[u8] = core::slice::from_raw_parts(
-        triangle_vertices.as_ptr() as *const u8,
-        triangle_vertices.len() * core::mem::size_of::<f32>(),
-    );
-
-    // We construct a buffer and upload the data
-    let vbo = gl.create_buffer().unwrap();
-    gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-    gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, triangle_vertices_u8, glow::STATIC_DRAW);
-
-    // We now construct a vertex array to describe the format of the input buffer
-    let vao = gl.create_vertex_array().unwrap();
-    gl.bind_vertex_array(Some(vao));
-    gl.enable_vertex_attrib_array(0);
-    gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, 0, 0);
-
-    (vbo, vao)
 }
