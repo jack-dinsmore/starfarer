@@ -1,9 +1,3 @@
-## April 23
+## May 9
 
-Jack added text rendering to main.rs, but rendering text covers the triangle we're drawing. I suspect this is the fault of a "uniform_matrix_4_f32_slice" call in the rendering function, which may be messing with the culling procedure.
-
-One we get the triangle to be 3D, we should come back to this. Try enabling / disabling culling & the depth buffer, or clearing the depth buffer.
-
-## May 8
-
-Rendered a cube. Next steps are to figure out why the model loading isn't loading the index lists, then render textures.
+Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkanalia/setup/base_code.html), which is written for the [vulkanalia](https://docs.rs/vulkanalia/0.14.0/vulkanalia/) crate, but I'm actually going to use the [ash](https://docs.rs/ash/0.37.0+1.3.209/ash/) crate because it's much more common.
