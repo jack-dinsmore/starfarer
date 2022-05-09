@@ -5,8 +5,8 @@ use glow::*;
 use graphics::shaders::{ShaderManager, Shader};
 use graphics::models::Model;
 
-use glow_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text, Region};
-use cgmath::{Matrix4, Point3, Vector3, Vector4, PerspectiveFov, Rad};
+//use glow_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text, Region};
+use cgmath::{Matrix4, Point3, Vector3, PerspectiveFov, Rad};
 
 
 fn main() {
@@ -17,9 +17,9 @@ fn main() {
         // Create a shader program from source
         let shader_manager = ShaderManager::new(&gl);
 
-        let view = Matrix4::look_at_rh(Point3::new(3.0, 4.0, 5.0),
+        let view = Matrix4::look_at_rh(Point3::new(5.0, 0.0, 0.0),
             Point3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.0, 1.0, 0.0));
+            Vector3::new(0.0, 0.0, 1.0));
 
         let projection = Matrix4::from(PerspectiveFov{ fovy: Rad(0.9), aspect: 1.2, near: 0.01, far: 100.0});
 
@@ -37,8 +37,9 @@ fn main() {
 
         gl.enable(glow::FRAMEBUFFER_SRGB);
         gl.enable(glow::BLEND);
-        gl.enable(glow::DEPTH_TEST);
+        gl.disable(glow::CULL_FACE);
         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+        gl.enable(glow::DEPTH_TEST);
         gl.depth_func(glow::LESS);
         gl.clear_color(0.1, 0.2, 0.3, 0.0);
 
