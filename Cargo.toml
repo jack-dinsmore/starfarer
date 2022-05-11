@@ -11,3 +11,6 @@ sdl2 = { version = "0.34" }
 glow_glyph = "0.5.0"
 cgmath = "0.18.0"
 wavefront_obj = "10.0.0"
+log = "0.4.17"
+env_logger = "0.7.1"
+num = "0.4.0"

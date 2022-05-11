@@ -1,6 +1,7 @@
 use glow::*;
 use std::ops::Drop;
 use cgmath::{Matrix4, conv::array4x4};
+use log::info;
 
 pub struct ShaderManager<'a> {
     gl: &'a glow::Context,
@@ -18,7 +19,8 @@ impl<'a> Shader<'a> {
             match self {
                 Self::Object(mvp) => {
                     let raw = core::slice::from_raw_parts((&array4x4(*mvp) as *const [[f32; 4]; 4]) as *const f32, 16);
-                    gl.uniform_matrix_4_f32_slice(gl.get_uniform_location(program, "mvp").as_ref(), false, raw);
+                    let loc = gl.get_uniform_location(program, "mvp");
+                    gl.uniform_matrix_4_f32_slice(loc.as_ref(), false, raw);
                 },
             }
         }

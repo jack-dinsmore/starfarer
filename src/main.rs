@@ -4,12 +4,15 @@ mod util;
 use glow::*;
 use graphics::shaders::{ShaderManager, Shader};
 use graphics::models::Model;
+use log::{error, info};
 
 //use glow_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text, Region};
 use cgmath::{Matrix4, Point3, Vector3, PerspectiveFov, Rad};
 
 
 fn main() {
+    env_logger::init();
+
     unsafe {
         // Create a context from a sdl2 window
         let (gl, window, mut events_loop, _context) = create_sdl2_context();
@@ -17,7 +20,7 @@ fn main() {
         // Create a shader program from source
         let shader_manager = ShaderManager::new(&gl);
 
-        let view = Matrix4::look_at_rh(Point3::new(5.0, 0.0, 0.0),
+        let view = Matrix4::look_at_rh(Point3::new(5.0, 1.0, 2.0),
             Point3::new(0.0, 0.0, 0.0),
             Vector3::new(0.0, 0.0, 1.0));
 
@@ -26,20 +29,20 @@ fn main() {
         let mvp = projection * view;
 
         // Upload uniforms
-        shader_manager.set_uniforms(Shader::Object(&mvp));
-
+        
         // Prepare glyph_brush
         //let inconsolata = ab_glyph::FontArc::try_from_slice(include_bytes!("Inconsolata-Regular.ttf")).expect("Could not open font file");
         //let mut glyph_brush = GlyphBrushBuilder::using_font(inconsolata).build(&gl);
-
+        
         // Create a vertex buffer and vertex array object
-        let model = Model::new(&gl, include_str!("assets/cube/cube.obj"));
+        let model = Model::new(&gl, include_str!("../assets/cube/cube.obj"));
 
         gl.enable(glow::FRAMEBUFFER_SRGB);
         gl.enable(glow::BLEND);
         gl.disable(glow::CULL_FACE);
+        gl.disable(glow::DEPTH_TEST);
+
         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
-        gl.enable(glow::DEPTH_TEST);
         gl.depth_func(glow::LESS);
         gl.clear_color(0.1, 0.2, 0.3, 0.0);
 
@@ -67,12 +70,19 @@ fn main() {
 
             // Draw text
             glyph_brush.draw_queued(&gl, 1024, 769).expect("Draw queued");*/
-            shader_manager.set_uniforms(Shader::Object(&mvp));
             shader_manager.load_object();
+            shader_manager.set_uniforms(Shader::Object(&mvp));
 
             model.draw(&gl);
 
             window.gl_swap_window();
+
+            loop {
+                let err = gl.get_error();
+                if err == glow::NO_ERROR {break;}
+
+                error!("OPEN GL ERROR {:#x}", err);
+            }
         }
         model.clean(&gl);
     }
