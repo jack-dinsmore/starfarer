@@ -1,7 +1,11 @@
 //! Split reduplicate functions in this share module
+
 pub mod v1;
 pub mod v2;
 
+use ash::version::DeviceV1_0;
+use ash::version::EntryV1_0;
+use ash::version::InstanceV1_0;
 use ash::vk;
 
 use std::ffi::CString;
@@ -269,7 +273,7 @@ pub fn find_queue_family(
                     physical_device,
                     index as u32,
                     surface_stuff.surface,
-                ).expect("Could not get surface support of physical device.assert_eq!")
+                )
         };
         if queue_family.queue_count > 0 && is_present_support {
             queue_family_indices.present_family = Some(index);
@@ -745,10 +749,7 @@ pub fn find_supported_format(
 }
 
 pub fn load_model(model_path: &Path) -> (Vec<VertexV3>, Vec<u32>) {
-    let model_obj = tobj::load_obj(model_path, &tobj::LoadOptions{
-        single_index: true,
-        ..Default::default()
-    }).expect(&format!("Failed to load model object {:?}!", model_path));
+    let model_obj = tobj::load_obj(model_path, &tobj::LoadOptions{single_index: true, ..Default::default()}).expect("Failed to load model object!");
 
     let mut vertices = vec![];
     let mut indices = vec![];

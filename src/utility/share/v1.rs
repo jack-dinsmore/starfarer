@@ -3,6 +3,7 @@ use image;
 use image::GenericImageView;
 use vk_shader_macros::include_glsl;
 
+
 use std::cmp::max;
 use std::ffi::CString;
 use std::path::Path;
@@ -206,7 +207,7 @@ pub fn create_graphics_pipeline(
 
     let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
         blend_enable: vk::FALSE,
-        color_write_mask: vk::ColorComponentFlags::R & vk::ColorComponentFlags::G & vk::ColorComponentFlags::B & vk::ColorComponentFlags::A,
+        color_write_mask: vk::ColorComponentFlags::all(),
         src_color_blend_factor: vk::BlendFactor::ONE,
         dst_color_blend_factor: vk::BlendFactor::ZERO,
         color_blend_op: vk::BlendOp::ADD,
@@ -954,7 +955,7 @@ pub fn create_texture_image(
     let mut image_object = image::open(image_path).unwrap(); // this function is slow in debug mode.
     image_object = image_object.flipv();
     let (image_width, image_height) = (image_object.width(), image_object.height());
-    let image_data = image_object.to_rgba8().into_raw();
+    let image_data = image_object.to_rgba8().into_raw(); // Altered from the tutorial. May be wrong for different image formats
     let image_size =
         (::std::mem::size_of::<u8>() as u32 * image_width * image_height * 4) as vk::DeviceSize;
 

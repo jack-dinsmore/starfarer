@@ -1,12 +1,13 @@
 mod utility;
+use crate::utility::{ constants::*, debug::*, share, structures::*, window::{ProgramProc, VulkanApp},};
 
-use crate::utility::{ constants::*, debug::*, share, structures::*, window::{ProgramProc, VulkanApp},
-};
+use vk_shader_macros::include_glsl;
 
+use ash::version::DeviceV1_0;
+use ash::version::InstanceV1_0;
 use ash::vk;
 use cgmath::{Deg, Matrix4, Point3, Vector3};
 use image::GenericImageView;
-use vk_shader_macros::include_glsl;
 
 use std::ffi::CString;
 use std::path::Path;
@@ -97,7 +98,7 @@ impl VulkanApp29 {
             utility::window::init_window(&event_loop, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
 
         // init vulkan stuff
-        let entry = ash::Entry::linked();
+        let entry = ash::Entry::new().unwrap();
         let instance = share::create_instance(
             &entry,
             WINDOW_TITLE,
@@ -180,7 +181,7 @@ impl VulkanApp29 {
             swapchain_stuff.swapchain_extent,
         );
         let (vertices, indices) = share::load_model(&Path::new(MODEL_PATH));
-        share::check_mipmap_support(&instance, physical_device, vk::Format::R8G8B8A8_UNORM);
+        share::check_mipmap_support(&instance, physical_device, vk::Format::R8G8B8A8_SRGB);
         let (texture_image, texture_image_memory, mip_levels) = VulkanApp29::create_texture_image(
             &device,
             command_pool,
@@ -296,7 +297,7 @@ impl VulkanApp29 {
 
             uniform_transform: UniformBufferObject {
                 model: Matrix4::from_angle_z(Deg(90.0)),
-                view: Matrix4::look_at(
+                view: Matrix4::look_at_rh(
                     Point3::new(2.0, 2.0, 2.0),
                     Point3::new(0.0, 0.0, 0.0),
                     Vector3::new(0.0, 0.0, 1.0),
@@ -412,7 +413,7 @@ impl VulkanApp29 {
         let mut image_object = image::open(image_path).unwrap(); // this function is slow in debug mode.
         image_object = image_object.flipv();
         let (image_width, image_height) = (image_object.width(), image_object.height());
-        let image_data = image_object.to_rgba8().into_raw();
+        let image_data = image_object.to_rgba8().into_raw(); // Altered from the tutorial. May be wrong for different image formats
         let image_size =
             (::std::mem::size_of::<u8>() as u32 * image_width * image_height * 4) as vk::DeviceSize;
         let mip_levels = ((::std::cmp::max(image_width, image_height) as f32)
@@ -453,7 +454,7 @@ impl VulkanApp29 {
             image_height,
             mip_levels,
             vk::SampleCountFlags::TYPE_1,
-            vk::Format::R8G8B8A8_UNORM,
+            vk::Format::R8G8B8A8_SRGB,
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST
@@ -467,7 +468,7 @@ impl VulkanApp29 {
             command_pool,
             submit_queue,
             texture_image,
-            vk::Format::R8G8B8A8_UNORM,
+            vk::Format::R8G8B8A8_SRGB,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             mip_levels,
@@ -674,7 +675,7 @@ impl VulkanApp29 {
         framebuffers
     }
 
-    fn create_graphics_pipeline( 
+    fn create_graphics_pipeline(
         device: &ash::Device,
         render_pass: vk::RenderPass,
         swapchain_extent: vk::Extent2D,
@@ -814,7 +815,7 @@ impl VulkanApp29 {
 
         let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
             blend_enable: vk::FALSE,
-            color_write_mask: vk::ColorComponentFlags::R & vk::ColorComponentFlags::G & vk::ColorComponentFlags::B & vk::ColorComponentFlags::A,
+            color_write_mask: vk::ColorComponentFlags::all(),
             src_color_blend_factor: vk::BlendFactor::ONE,
             dst_color_blend_factor: vk::BlendFactor::ZERO,
             color_blend_op: vk::BlendOp::ADD,
