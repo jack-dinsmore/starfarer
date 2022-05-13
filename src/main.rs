@@ -3,11 +3,8 @@ use crate::utility::{ constants::*, debug::*, share, structures::*, window::{Pro
 
 use vk_shader_macros::include_glsl;
 
-use ash::version::DeviceV1_0;
-use ash::version::InstanceV1_0;
 use ash::vk;
 use cgmath::{Deg, Matrix4, Point3, Vector3};
-use image::GenericImageView;
 
 use std::ffi::CString;
 use std::path::Path;
@@ -98,7 +95,7 @@ impl VulkanApp29 {
             utility::window::init_window(&event_loop, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
 
         // init vulkan stuff
-        let entry = ash::Entry::new().unwrap();
+        let entry = ash::Entry::linked();
         let instance = share::create_instance(
             &entry,
             WINDOW_TITLE,
@@ -815,7 +812,7 @@ impl VulkanApp29 {
 
         let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
             blend_enable: vk::FALSE,
-            color_write_mask: vk::ColorComponentFlags::all(),
+            color_write_mask: vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A,
             src_color_blend_factor: vk::BlendFactor::ONE,
             dst_color_blend_factor: vk::BlendFactor::ZERO,
             color_blend_op: vk::BlendOp::ADD,
