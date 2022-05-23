@@ -1,5 +1,5 @@
-use crate::utility::debug::ValidationInfo;
-use crate::utility::structures::DeviceExtension;
+use crate::vk_core::debug::ValidationInfo;
+use crate::vk_core::structures::DeviceExtension;
 
 use std::os::raw::c_char;
 

@@ -12,10 +12,10 @@ use std::path::Path;
 use std::ptr;
 
 
-use crate::utility::constants::*;
-use crate::utility::debug;
-use crate::utility::platforms;
-use crate::utility::structures::*;
+use crate::vk_core::constants::*;
+use crate::vk_core::debug;
+use crate::vk_core::platforms;
+use crate::vk_core::structures::*;
 
 pub fn create_instance(
     entry: &ash::Entry,
