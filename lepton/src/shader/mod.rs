@@ -1,35 +1,33 @@
+mod camera;
+
 use ash::vk;
 use std::ptr;
-use cgmath::{Matrix4, Point3, Vector3, Deg};
-use vk_shader_macros::include_glsl;
 use std::ffi::CString;
 
 use crate::{Graphics, Unload};
+pub use camera::*;
 
 /// A new trait for data that can be used as a uniform
 pub trait ShaderData: Clone + Copy + 'static {
-    fn update(&mut self, delta_time: f32) {}
+    const VERTEX_CODE: &'static [u32];
+    const FRAGMENT_CODE: &'static [u32];
+
+    fn default() -> Self;
 }
 
 /// A struct that contains the shader information for uniform struct `D`.
 pub struct Shader<D: ShaderData> {
-    uniform: D,
+    pub(crate) uniform: D,
     uniform_buffers: Vec<vk::Buffer>,
     uniform_buffers_memory: Vec<vk::DeviceMemory>,
     pub(crate) pipeline: vk::Pipeline,
-    pipeline_layout: vk::PipelineLayout,
-}
-
-pub struct ShaderStarter<D: ShaderData> {
-    vertex_code: Vec<u32>,
-    fragment_code: Vec<u32>,
-    uniform: D,
+    pub(crate) pipeline_layout: vk::PipelineLayout,
 }
 
 impl<D: ShaderData> Shader<D> {
-    pub fn new(graphics: &Graphics, shader_starter: ShaderStarter<D>) -> Shader<D> {
-        let vert_shader_module = graphics.create_shader_module(shader_starter.vertex_code);
-        let frag_shader_module = graphics.create_shader_module(shader_starter.fragment_code);
+    pub fn new(graphics: &Graphics) -> Shader<D> {
+        let vert_shader_module = graphics.create_shader_module(D::VERTEX_CODE.to_vec());
+        let frag_shader_module = graphics.create_shader_module(D::FRAGMENT_CODE.to_vec());
 
         let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
 
@@ -65,7 +63,7 @@ impl<D: ShaderData> Shader<D> {
         }
 
         Shader {
-            uniform: shader_starter.uniform,
+            uniform: D::default(),
             uniform_buffers,
             uniform_buffers_memory,
             pipeline,
@@ -96,14 +94,6 @@ impl<D: ShaderData> Shader<D> {
             offset: 0,
             range: ::std::mem::size_of::<D>() as u64,
         }]
-    }
-
-    pub(crate) fn get_pipeline_layout(&self) -> &vk::PipelineLayout {
-        &self.pipeline_layout
-    }
-
-    pub fn update_uniform(&mut self, delta_time: f32) {
-        self.uniform.update(delta_time);
     }
 }
 
@@ -363,45 +353,5 @@ impl Graphics {
         };
 
         (graphics_pipelines[0], pipeline_layout)
-    }
-}
-
-/// An example shader, made for use with a camera.
-#[repr(C)]
-#[derive(Clone, Debug, Copy)]
-pub struct CameraData {
-    pub model: Matrix4<f32>,
-    pub view: Matrix4<f32>,
-    pub proj: Matrix4<f32>,
-}
-impl CameraData {
-    pub fn new(aspect: f32) -> ShaderStarter<CameraData> {
-        let camera_data = CameraData {
-            model: Matrix4::from_angle_z(Deg(90.0)),
-            view: Matrix4::look_at_rh(
-                Point3::new(2.0, 2.0, 2.0),
-                Point3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.0, 0.0, 1.0),
-            ),
-            proj: {
-                let mut proj = cgmath::perspective(Deg(45.0), aspect, 0.1, 10.0);
-                proj[1][1] = proj[1][1] * -1.0;
-                proj
-            },
-        };
-
-        ShaderStarter {
-            uniform: camera_data,
-            vertex_code: include_glsl!("src/shader/26-shader-depth.vert", kind: vert).to_vec(),
-            fragment_code: include_glsl!("src/shader/26-shader-depth.frag", kind: frag).to_vec(),
-        }
-    }
-}
-
-impl ShaderData for CameraData {
-    fn update(&mut self, delta_time: f32) {
-        self.model =
-        Matrix4::from_axis_angle(Vector3::new(0.0, 0.0, 1.0), Deg(90.0) * delta_time)
-            * self.model;
     }
 }

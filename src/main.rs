@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use lepton::{Graphics, Control, Renderer, KeyEvent, Pattern, PatternTrait};
-use lepton::shader::{ShaderData, CameraData};
+use lepton::shader::CameraData;
 use lepton::{ElementState, VirtualKeyCode};
 use lepton::model::Model;
 
@@ -9,19 +9,19 @@ const MODEL_PATH: &'static str = "assets/chalet.obj";
 const TEXTURE_PATH: &'static str = "assets/chalet.jpg";
 
 
-struct MyRenderer<D: ShaderData> {
-    pattern: Pattern<D>,
+struct MyRenderer {
+    pattern: Pattern<CameraData>,
 }
 
-impl<D: ShaderData> MyRenderer<D> {
-    fn new(pattern: Pattern<D>) -> MyRenderer<D> {
+impl MyRenderer {
+    fn new(pattern: Pattern<CameraData>) -> MyRenderer {
         MyRenderer {pattern}
     }
 }
 
-impl<D: ShaderData> Renderer for MyRenderer<D> {
+impl Renderer for MyRenderer {
     fn update(&mut self, delta_time: f32) {
-        self.pattern.update_uniform(delta_time); 
+        self.pattern.uniform().update(delta_time);
     }
 
     fn get_pattern(&self) -> &dyn PatternTrait {
@@ -29,7 +29,7 @@ impl<D: ShaderData> Renderer for MyRenderer<D> {
     }
 }
 
-impl<D: ShaderData> Drop for MyRenderer<D> {
+impl Drop for MyRenderer {
     fn drop(&mut self) {
         println!("Renderer dropped");
     }
@@ -60,7 +60,7 @@ fn main() {
     let graphics = Graphics::new(&control);
     let key_event = MyKeyEvent::new();
     
-    let pattern = Pattern::begin(&graphics, CameraData::new(1.0));
+    let pattern = Pattern::begin(&graphics);
     Model::new(&graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH)).expect("Model creation failed");
     let pattern = pattern.end(&graphics);
 

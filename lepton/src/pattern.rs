@@ -6,7 +6,7 @@ use cgmath::{Matrix4, Vector3, Point3, Deg};
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
 use crate::model::Model;
-use crate::shader::{Shader, ShaderStarter, ShaderData};
+use crate::shader::{Shader, ShaderData};
 
 pub trait PatternTrait {
     fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize);
@@ -34,9 +34,9 @@ impl<D: ShaderData> PatternTrait for Pattern<D> {
 
 impl<D: ShaderData> Pattern<D> {
     /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
-    pub fn begin(graphics: &Graphics, shader_starter: ShaderStarter<D>) -> UnfinishedPattern<D> {
+    pub fn begin(graphics: &Graphics) -> UnfinishedPattern<D> {
         let command_buffers = graphics.allocate_command_buffer();
-        let shader = Shader::new(graphics, shader_starter);
+        let shader = Shader::new(graphics);
 
         for (i, &command_buffer) in command_buffers.iter().enumerate() {
             graphics.begin_command_buffer(command_buffer, &shader.pipeline, i);
@@ -45,8 +45,8 @@ impl<D: ShaderData> Pattern<D> {
         UnfinishedPattern::<D> { shader, command_buffers }
     }
 
-    pub fn update_uniform(&mut self, delta_time: f32) {
-        self.shader.update_uniform(delta_time);
+    pub fn uniform(&mut self) -> &mut D {
+        &mut self.shader.uniform
     }
 }
 
@@ -66,7 +66,7 @@ impl<D: ShaderData> UnfinishedPattern<D> {
     /// Inside the pattern, render a model.
     pub(crate) fn render(&self, graphics: &Graphics, model: &Model<D>) {
         for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
-            model.render(graphics, &self.shader.get_pipeline_layout(), &command_buffer, i);
+            model.render(graphics, &self.shader.pipeline_layout, &command_buffer, i);
         }
     }
 }
