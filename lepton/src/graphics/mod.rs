@@ -15,9 +15,6 @@ pub use primitives::*;
 //use crate::vk_core::{share, structures::DeviceExtension};
 use debug::ValidationInfo;
 
-// Constants
-const WINDOW_TITLE: &'static str = "29.Multi-Sampling";
-
 pub struct Graphics {
     pub(crate) window: winit::window::Window,
 
@@ -66,8 +63,7 @@ pub struct Graphics {
     pub(crate) is_framebuffer_resized: bool,
 }
 
-const WINDOW_WIDTH: u32 = 800;
-const WINDOW_HEIGHT: u32 = 600;
+
 const VALIDATION: ValidationInfo = ValidationInfo {
     is_enable: true,
     required_validation_layers: ["VK_LAYER_KHRONOS_validation"],
@@ -94,13 +90,13 @@ impl DeviceExtension {
 /// Public functions
 impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
-    pub fn new(control: &Control) -> Self {
-        let window = Graphics::init_window(&control.event_loop, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
+    pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32) -> Self {
+        let window = Graphics::init_window(&control.event_loop, window_title, window_width, window_height);
 
         // init vulkan stuff
         let entry = ash::Entry::linked();
-        let instance = Graphics::create_instance(&entry, WINDOW_TITLE, VALIDATION.is_enable, &VALIDATION.required_validation_layers.to_vec());
-        let surface_stuff = Graphics::create_surface(&entry, &instance, &window, WINDOW_WIDTH, WINDOW_HEIGHT);
+        let instance = Graphics::create_instance(&entry, window_title, VALIDATION.is_enable, &VALIDATION.required_validation_layers.to_vec());
+        let surface_stuff = Graphics::create_surface(&entry, &instance, &window, window_width, window_height);
         let (debug_utils_loader, debug_messenger) = debug::setup_debug_utils(VALIDATION.is_enable, &entry, &instance);
         let physical_device = Graphics::pick_physical_device(&instance, &surface_stuff, &DEVICE_EXTENSIONS);
         let msaa_samples = Graphics::get_max_usable_sample_count(&instance, physical_device);

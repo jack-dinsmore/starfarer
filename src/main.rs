@@ -5,9 +5,11 @@ use lepton::shader::CameraData;
 use lepton::{ElementState, VirtualKeyCode};
 use lepton::model::Model;
 
+const WINDOW_TITLE: &'static str = "Starfarer";
+const WINDOW_WIDTH: u32 = 800;
+const WINDOW_HEIGHT: u32 = 600;
 const MODEL_PATH: &'static str = "assets/chalet.obj";
 const TEXTURE_PATH: &'static str = "assets/chalet.jpg";
-
 
 struct Starfarer {
     pattern: Pattern<CameraData>,
@@ -46,7 +48,7 @@ impl Drop for Starfarer {
 
 fn main() {
     let control = Control::new();
-    let graphics = Graphics::new(&control);
+    let graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
     
     let pattern = Pattern::begin(&graphics);
     Model::new(&graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH)).expect("Model creation failed");
