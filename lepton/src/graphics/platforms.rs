@@ -51,8 +51,7 @@ pub fn required_extension_names() -> Vec<*const i8> {
 
 // create surface ---------------------------------------------------------
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-pub unsafe fn create_surface(entry: &ash::Entry, instance: &ash::Instance,
-    window: &winit::window::Window) -> Result<vk::SurfaceKHR, vk::Result> {
+pub unsafe fn create_surface(entry: &ash::Entry, instance: &ash::Instance, window: &winit::window::Window) -> Result<vk::SurfaceKHR, vk::Result> {
 
     use std::ptr;
     use winit::platform::unix::WindowExtUnix;

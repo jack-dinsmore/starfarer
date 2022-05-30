@@ -1,5 +1,3 @@
-use std::thread;
-use std::time::Duration;
 use std::time::Instant;
 
 const SAMPLE_COUNT: usize = 5;
@@ -40,15 +38,6 @@ impl FPSLimiter {
         self.current_frame = (self.current_frame + 1) % SAMPLE_COUNT;
     }
 
-    // TODO: this function seems not work.
-    pub fn keep_fps(&self) {
-        if self.frame_time_prefer > self.delta_frame {
-            let delay = Duration::from_micros((self.frame_time_prefer - self.delta_frame) as u64);
-
-            thread::sleep(delay);
-        }
-    }
-
     /// Calculate the current FPS.
     pub fn fps(&self) -> f32 {
         let mut sum = 0_u32;
@@ -59,8 +48,7 @@ impl FPSLimiter {
         1000_000.0_f32 / (sum as f32 / SAMPLE_COUNT_FLOAT)
     }
 
-    /// Return current delta time in seconds
-    /// this function ignore its second part, since the second is mostly zero.
+    /// Return current delta time in seconds.
     pub fn delta_time(&self) -> f32 {
         self.delta_frame as f32 / 1000_000.0_f32 // time in second
     }

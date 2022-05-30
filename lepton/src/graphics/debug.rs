@@ -34,10 +34,7 @@ pub struct ValidationInfo {
     pub required_validation_layers: [&'static str; 1],
 }
 
-pub fn check_validation_layer_support(
-    entry: &ash::Entry,
-    required_validation_layers: &Vec<&str>,
-) -> bool {
+pub fn check_validation_layer_support(entry: &ash::Entry, required_validation_layers: &Vec<&str>,) -> bool {
     // if support validation layer, then return true
 
     let layer_properties = entry
@@ -68,11 +65,7 @@ pub fn check_validation_layer_support(
     true
 }
 
-pub fn setup_debug_utils(
-    is_enable_debug: bool,
-    entry: &ash::Entry,
-    instance: &ash::Instance,
-) -> (ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT) {
+pub fn setup_debug_utils(is_enable_debug: bool, entry: &ash::Entry, instance: &ash::Instance) -> (ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT) {
     let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
 
     if is_enable_debug == false {

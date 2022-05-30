@@ -1,25 +1,31 @@
-use lepton::{Graphics, Control, Renderer, KeyEvent};
-use winit::event::{ElementState, VirtualKeyCode};
+use std::path::Path;
+
+use lepton::{Graphics, Control, Renderer, KeyEvent, Pattern};
+use lepton::{ElementState, VirtualKeyCode};
+use lepton::model::Model;
+
+const MODEL_PATH: &'static str = "assets/chalet.obj";
+const TEXTURE_PATH: &'static str = "assets/chalet.jpg";
+
 
 struct MyRenderer {
-    num: &'static f32
+    pattern: Pattern,
 }
 
 impl MyRenderer {
-    fn new(num: &'static f32) -> MyRenderer {
-        MyRenderer {num}
+    fn new(pattern: Pattern) -> MyRenderer {
+        MyRenderer {pattern}
     }
 }
 
 impl Renderer for MyRenderer {
-    fn draw_frame(&mut self, delta_time: f32) {
-        
+    fn get_pattern(&self) -> &Pattern {
+        &self.pattern
     }
 }
 
 impl Drop for MyRenderer {
     fn drop(&mut self) {
-        println!("Shared number {}", self.num);
         println!("Renderer dropped");
     }
 }
@@ -44,13 +50,18 @@ impl KeyEvent for MyKeyEvent {
     }
 }
 
-static shared_number: f32 = 7.2;
-
 fn main() {
     let control = Control::new();
     let graphics = Graphics::new(&control);
-    let renderer = MyRenderer::new(&shared_number);
     let key_event = MyKeyEvent::new();
+    
+    let model = Model::new(&graphics, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH)).expect("Model creation failed");
+    
+    let pattern = Pattern::begin(&graphics);
+    pattern.render(&graphics, &model);
+    let pattern = pattern.end(&graphics);
+
+    let renderer = MyRenderer::new(pattern);
 
     control.run(graphics, Some(key_event), renderer, true);
 }

@@ -14,5 +14,4 @@ members = [
 
 [dependencies]
 lepton = { path = "lepton" }
-winit = "0.26.1"
 
