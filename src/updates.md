@@ -4,6 +4,13 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 
 ## May 30
 
-Created lepton and made the Graphics module.
+- Created lepton and made the Graphics module.
+- Added shaders
+- Added a camera
 
-Added shaders
+### Next:
+- Either forbid screen resizing or fix the recreate swapchain function
+- Fullscreen
+- Camera steering
+- Model locations (each must have their own uniform buffer)
+- Design a ship

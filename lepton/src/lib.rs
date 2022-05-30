@@ -8,10 +8,7 @@ mod fps_limiter;
 pub use pattern::*;
 pub use graphics::*;
 pub use control::*;
-
-pub type VirtualKeyCode = winit::event::VirtualKeyCode;
-pub type ElementState = winit::event::ElementState;
-
+pub use winit::event::VirtualKeyCode;
 
 /// A module to contain all of the constants which are set within the crate.
 mod constants {

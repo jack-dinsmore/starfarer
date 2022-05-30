@@ -1,8 +1,6 @@
 use ash::vk;
 use std::ptr;
 
-use cgmath::{Matrix4, Vector3, Point3, Deg};
-
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
 use crate::model::Model;

@@ -72,7 +72,6 @@ pub const DEVICE_EXTENSIONS: DeviceExtension = DeviceExtension {
     names: ["VK_KHR_swapchain"],
 };
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
-pub const IS_PAINT_FPS_COUNTER: bool = false;
 
 
 

@@ -1,4 +1,4 @@
-use winit::{event::{Event, WindowEvent, KeyboardInput}, event_loop::{EventLoop, ControlFlow}};
+use winit::{event::{Event, WindowEvent, KeyboardInput, ElementState}, event_loop::{EventLoop, ControlFlow}};
 use crate::{Graphics, PatternTrait, fps_limiter::FPSLimiter};
 
 pub struct Control {
@@ -26,11 +26,24 @@ impl Control {
                         },
                         | WindowEvent::KeyboardInput { input, .. } => {
                             match input {
-                                | KeyboardInput { virtual_keycode, state, .. } => {
-                                    if lepton.keydown(virtual_keycode, state) {
-                                        graphics.terminate();
-                                        *control_flow = ControlFlow::Exit
+                                KeyboardInput { virtual_keycode, state, .. } => {
+                                    match state {
+                                        ElementState::Pressed =>
+                                            if let Some(vk) = virtual_keycode{
+                                                if lepton.keydown(vk) {
+                                                    graphics.terminate();
+                                                    *control_flow = ControlFlow::Exit
+                                                }
+                                            },
+                                        ElementState::Released =>
+                                            if let Some(vk) = virtual_keycode{
+                                                if lepton.keyup(vk) {
+                                                    graphics.terminate();
+                                                    *control_flow = ControlFlow::Exit
+                                                }
+                                            },
                                     }
+                                    
                                 },
                             }
                         },
@@ -60,15 +73,57 @@ impl Control {
     }
 }
 
+pub struct KeyTracker {
+    low_mask: u128,
+    high_mask: u128,
+}
+
+impl KeyTracker {
+    pub fn new() -> KeyTracker {
+        KeyTracker {
+            low_mask: 0,
+            high_mask: 0,
+        }
+    }
+
+    pub fn keydown(&mut self, vk: winit::event::VirtualKeyCode) {
+        if (vk as u32) < 128 {
+            self.low_mask |= 1 << (vk as u32);
+        } else {
+            self.low_mask |= 1 << ((vk as u32) - 128);
+        }
+    }
+
+    pub fn keyup(&mut self, vk: winit::event::VirtualKeyCode) {
+        if (vk as u32) < 128 {
+            self.low_mask &= !(1 << (vk as u32));
+        } else {
+            self.low_mask &= !(1 << ((vk as u32) - 128));
+        }
+    }
+
+    pub fn get_state(&self, vk: winit::event::VirtualKeyCode) -> bool{
+        0 != if (vk as u32) < 128 {
+            self.low_mask & (1 << (vk as u32))
+        } else {
+            self.low_mask & (1 << ((vk as u32) - 128))
+        }
+    }
+}
+
 /// A user-end trait which enables rendering and response to key presses
 pub trait Lepton: 'static {
     /// Respond to a key press. Returns true if the program is to exit.
-    fn keydown(&mut self, _keycode: Option<winit::event::VirtualKeyCode>, _element_state: winit::event::ElementState) -> bool {false}
+    fn keydown(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
+
+    /// Respond to a key release. Returns true if the program is to exit.
+    fn keyup(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
 
     /// Determine which pattern to use for drawing
     fn get_pattern(&self) -> &dyn PatternTrait;
 
     // Update all the objects
     fn update(&mut self, delta_time: f32);
+
 }
 
