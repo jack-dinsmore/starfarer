@@ -12,8 +12,7 @@ impl Control {
     }
 
     /// Run the main game loop. Consumes self.
-    pub fn run<K, R>(self, mut graphics: Graphics, mut key_event: Option<K>, mut renderer: R, print_fps: bool) -> ! 
-    where K: KeyEvent + 'static, R: Renderer + 'static {
+    pub fn run<L: Lepton>(self, mut graphics: Graphics, mut lepton: L, print_fps: bool) -> ! {
         let mut tick_counter = FPSLimiter::new();
 
         self.event_loop.run(move |event, _, control_flow| {
@@ -28,11 +27,9 @@ impl Control {
                         | WindowEvent::KeyboardInput { input, .. } => {
                             match input {
                                 | KeyboardInput { virtual_keycode, state, .. } => {
-                                    if let Some(ke) = &mut key_event {
-                                        if ke.keydown(virtual_keycode, state) {
-                                            graphics.terminate();
-                                            *control_flow = ControlFlow::Exit
-                                        }
+                                    if lepton.keydown(virtual_keycode, state) {
+                                        graphics.terminate();
+                                        *control_flow = ControlFlow::Exit
                                     }
                                 },
                             }
@@ -46,8 +43,8 @@ impl Control {
                 | Event::RedrawRequested(_window_id) => {
                     let delta_time = tick_counter.delta_time();
 
-                    renderer.update(delta_time);
-                    graphics.draw_frame(renderer.get_pattern());
+                    lepton.update(delta_time);
+                    graphics.draw_frame(lepton.get_pattern());
                     
                     if print_fps {
                         print!("FPS: {}\r", tick_counter.fps());
@@ -63,16 +60,15 @@ impl Control {
     }
 }
 
-/// A user-end trait which enables response to key presses
-pub trait KeyEvent {
+/// A user-end trait which enables rendering and response to key presses
+pub trait Lepton: 'static {
     /// Respond to a key press. Returns true if the program is to exit.
-    fn keydown(&mut self, keycode: Option<winit::event::VirtualKeyCode>, element_state: winit::event::ElementState) -> bool;
-}
+    fn keydown(&mut self, _keycode: Option<winit::event::VirtualKeyCode>, _element_state: winit::event::ElementState) -> bool {false}
 
-/// A user-end trait which enables rendering.
-pub trait Renderer {
-    /// Draw one frame
+    /// Determine which pattern to use for drawing
     fn get_pattern(&self) -> &dyn PatternTrait;
+
+    // Update all the objects
     fn update(&mut self, delta_time: f32);
 }
 
