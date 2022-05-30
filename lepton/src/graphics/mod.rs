@@ -9,9 +9,8 @@ use winit::event_loop::EventLoop;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
-use vk_shader_macros::include_glsl;
 
-use crate::{Control, Pattern, constants::*};
+use crate::{Control, PatternTrait, constants::*, shader::{Shader, CameraData}};
 pub use primitives::*;
 //use crate::vk_core::{share, structures::DeviceExtension};
 use debug::ValidationInfo;
@@ -48,8 +47,6 @@ pub struct Graphics {
 
     pub(crate) render_pass: vk::RenderPass,
     pub(crate) ubo_layout: vk::DescriptorSetLayout,
-    pub(crate) pipeline_layout: vk::PipelineLayout,
-    pub(crate) graphics_pipeline: vk::Pipeline,
 
     pub(crate) color_image: vk::Image,
     pub(crate) color_image_view: vk::ImageView,
@@ -58,9 +55,6 @@ pub struct Graphics {
     pub(crate) depth_image_view: vk::ImageView,
     pub(crate) depth_image_memory: vk::DeviceMemory,
     pub(crate) msaa_samples: vk::SampleCountFlags,
-    pub(crate) uniform_transform: UniformBufferObject,
-    pub(crate) uniform_buffers: Vec<vk::Buffer>,
-    pub(crate) uniform_buffers_memory: Vec<vk::DeviceMemory>,
     pub(crate) descriptor_pool: vk::DescriptorPool,
 
     pub(crate) command_pool: vk::CommandPool,
@@ -125,32 +119,16 @@ impl Graphics {
             command_pool, graphics_queue, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
         let framebuffers = Graphics::create_framebuffers(
             &device, render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
+        let ubo_layout = crate::shader::create_descriptor_set_layout(&device);
         
-        let ubo_layout = Graphics::create_descriptor_set_layout(&device);
-        let (graphics_pipeline, pipeline_layout) = Graphics::create_graphics_pipeline(&device, render_pass, swapchain_stuff.swapchain_extent, ubo_layout, msaa_samples);
-        let (uniform_buffers, uniform_buffers_memory) = Graphics::create_uniform_buffers(
-            &device, &physical_device_memory_properties, swapchain_stuff.swapchain_images.len());
+        
+        /*let (shader, shader_stages) = Shader::new(self, CameraData::new(
+            swapchain_stuff.swapchain_extent.width as f32 / swapchain_stuff.swapchain_extent.height as f32));
+
+        let (graphics_pipeline, pipeline_layout) = Graphics::create_graphics_pipeline(&device, render_pass, swapchain_stuff.swapchain_extent, ubo_layout, msaa_samples);*/
         
         let sync_objects = Graphics::create_sync_objects(&device, MAX_FRAMES_IN_FLIGHT);
-        let uniform_transform =  UniformBufferObject {
-            model: Matrix4::from_angle_z(Deg(90.0)),
-            view: Matrix4::look_at_rh(
-                Point3::new(2.0, 2.0, 2.0),
-                Point3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.0, 0.0, 1.0),
-            ),
-            proj: {
-                let mut proj = cgmath::perspective(
-                    Deg(45.0),
-                    swapchain_stuff.swapchain_extent.width as f32
-                        / swapchain_stuff.swapchain_extent.height as f32,
-                    0.1,
-                    10.0,
-                );
-                proj[1][1] = proj[1][1] * -1.0;
-                proj
-            },
-        };
+
         // cleanup(); the 'drop' function will take care of it.
         Graphics {
             window,
@@ -178,10 +156,8 @@ impl Graphics {
             swapchain_imageviews,
             framebuffers,
 
-            pipeline_layout,
             ubo_layout,
             render_pass,
-            graphics_pipeline,
 
             color_image,
             color_image_view,
@@ -192,10 +168,6 @@ impl Graphics {
             depth_image_memory,
 
             msaa_samples,
-
-            uniform_transform,
-            uniform_buffers,
-            uniform_buffers_memory,
 
             descriptor_pool,
 
@@ -224,7 +196,7 @@ impl Graphics {
         self.window.request_redraw();
     }
 
-    pub(crate) fn draw_frame(&mut self, delta_time: f32, pattern: &Pattern) {
+    pub(crate) fn draw_frame(&mut self, pattern: &dyn PatternTrait) {
         let wait_fences = [self.in_flight_fences[self.current_frame]];
 
         unsafe {
@@ -252,7 +224,7 @@ impl Graphics {
             }
         };
 
-        self.update_uniform_buffer(image_index as usize, delta_time);
+        pattern.update_uniform_buffer(&self, image_index as usize);
 
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -265,7 +237,7 @@ impl Graphics {
             p_wait_semaphores: wait_semaphores.as_ptr(),
             p_wait_dst_stage_mask: wait_stages.as_ptr(),
             command_buffer_count: 1,
-            p_command_buffers: &pattern.command_buffers[image_index as usize],
+            p_command_buffers: pattern.get_command_buffer(image_index as usize),
             signal_semaphore_count: signal_semaphores.len() as u32,
             p_signal_semaphores: signal_semaphores.as_ptr(),
         }];
@@ -315,26 +287,6 @@ impl Graphics {
         }
 
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
-    }
-
-    fn update_uniform_buffer(&mut self, current_image: usize, delta_time: f32) {
-        self.uniform_transform.model =
-            Matrix4::from_axis_angle(Vector3::new(0.0, 0.0, 1.0), Deg(90.0) * delta_time)
-                * self.uniform_transform.model;
-
-        let ubos = [self.uniform_transform.clone()];
-
-        let buffer_size = (std::mem::size_of::<UniformBufferObject>() * ubos.len()) as u64;
-
-        unsafe {
-            let data_ptr = self.device.map_memory(self.uniform_buffers_memory[current_image],
-                0, buffer_size, vk::MemoryMapFlags::empty())
-                    .expect("Failed to Map Memory") as *mut UniformBufferObject;
-
-            data_ptr.copy_from_nonoverlapping(ubos.as_ptr(), ubos.len());
-
-            self.device.unmap_memory(self.uniform_buffers_memory[current_image]);
-        }
     }
 }
 
@@ -894,269 +846,6 @@ impl Graphics {
         swapchain_imageviews
     }
 
-    fn create_descriptor_set_layout(device: &ash::Device) -> vk::DescriptorSetLayout {
-        let ubo_layout_bindings = [
-            vk::DescriptorSetLayoutBinding {
-                // transform uniform
-                binding: 0,
-                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 1,
-                stage_flags: vk::ShaderStageFlags::VERTEX,
-                p_immutable_samplers: ptr::null(),
-            },
-            vk::DescriptorSetLayoutBinding {
-                // sampler uniform
-                binding: 1,
-                descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 1,
-                stage_flags: vk::ShaderStageFlags::FRAGMENT,
-                p_immutable_samplers: ptr::null(),
-            },
-        ];
-
-        let ubo_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            binding_count: ubo_layout_bindings.len() as u32,
-            p_bindings: ubo_layout_bindings.as_ptr(),
-        };
-
-        unsafe {
-            device
-                .create_descriptor_set_layout(&ubo_layout_create_info, None)
-                .expect("Failed to create Descriptor Set Layout!")
-        }
-    }
-
-    fn create_graphics_pipeline(device: &ash::Device, render_pass: vk::RenderPass, swapchain_extent: vk::Extent2D, ubo_set_layout: vk::DescriptorSetLayout, msaa_samples: vk::SampleCountFlags) -> (vk::Pipeline, vk::PipelineLayout) {
-        let vert_shader_module = Graphics::create_shader_module(
-            device,
-            include_glsl!("src/shader/26-shader-depth.vert", kind: vert).to_vec(),
-        );
-        let frag_shader_module = Graphics::create_shader_module(
-            device,
-            include_glsl!("src/shader/26-shader-depth.frag", kind: frag).to_vec(),
-        );
-
-        let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
-
-        let shader_stages = [
-            vk::PipelineShaderStageCreateInfo {
-                // Vertex Shader
-                s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
-                p_next: ptr::null(),
-                flags: vk::PipelineShaderStageCreateFlags::empty(),
-                module: vert_shader_module,
-                p_name: main_function_name.as_ptr(),
-                p_specialization_info: ptr::null(),
-                stage: vk::ShaderStageFlags::VERTEX,
-            },
-            vk::PipelineShaderStageCreateInfo {
-                // Fragment Shader
-                s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
-                p_next: ptr::null(),
-                flags: vk::PipelineShaderStageCreateFlags::empty(),
-                module: frag_shader_module,
-                p_name: main_function_name.as_ptr(),
-                p_specialization_info: ptr::null(),
-                stage: vk::ShaderStageFlags::FRAGMENT,
-            },
-        ];
-
-        let binding_description = crate::model::VertexV3::get_binding_descriptions();
-        let attribute_description = crate::model::VertexV3::get_attribute_descriptions();
-
-        let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineVertexInputStateCreateFlags::empty(),
-            vertex_attribute_description_count: attribute_description.len() as u32,
-            p_vertex_attribute_descriptions: attribute_description.as_ptr(),
-            vertex_binding_description_count: binding_description.len() as u32,
-            p_vertex_binding_descriptions: binding_description.as_ptr(),
-        };
-        let vertex_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            flags: vk::PipelineInputAssemblyStateCreateFlags::empty(),
-            p_next: ptr::null(),
-            primitive_restart_enable: vk::FALSE,
-            topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-        };
-
-        let viewports = [vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: swapchain_extent.width as f32,
-            height: swapchain_extent.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }];
-
-        let scissors = [vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent: swapchain_extent,
-        }];
-
-        let viewport_state_create_info = vk::PipelineViewportStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineViewportStateCreateFlags::empty(),
-            scissor_count: scissors.len() as u32,
-            p_scissors: scissors.as_ptr(),
-            viewport_count: viewports.len() as u32,
-            p_viewports: viewports.as_ptr(),
-        };
-
-        let rasterization_statue_create_info = vk::PipelineRasterizationStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineRasterizationStateCreateFlags::empty(),
-            depth_clamp_enable: vk::FALSE,
-            cull_mode: vk::CullModeFlags::BACK,
-            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
-            line_width: 1.0,
-            polygon_mode: vk::PolygonMode::FILL,
-            rasterizer_discard_enable: vk::FALSE,
-            depth_bias_clamp: 0.0,
-            depth_bias_constant_factor: 0.0,
-            depth_bias_enable: vk::FALSE,
-            depth_bias_slope_factor: 0.0,
-        };
-
-        let multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            flags: vk::PipelineMultisampleStateCreateFlags::empty(),
-            p_next: ptr::null(),
-            rasterization_samples: msaa_samples,
-            sample_shading_enable: vk::FALSE,
-            min_sample_shading: 0.0,
-            p_sample_mask: ptr::null(),
-            alpha_to_one_enable: vk::FALSE,
-            alpha_to_coverage_enable: vk::FALSE,
-        };
-
-        let stencil_state = vk::StencilOpState {
-            fail_op: vk::StencilOp::KEEP,
-            pass_op: vk::StencilOp::KEEP,
-            depth_fail_op: vk::StencilOp::KEEP,
-            compare_op: vk::CompareOp::ALWAYS,
-            compare_mask: 0,
-            write_mask: 0,
-            reference: 0,
-        };
-
-        let depth_state_create_info = vk::PipelineDepthStencilStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineDepthStencilStateCreateFlags::empty(),
-            depth_test_enable: vk::TRUE,
-            depth_write_enable: vk::TRUE,
-            depth_compare_op: vk::CompareOp::LESS,
-            depth_bounds_test_enable: vk::FALSE,
-            stencil_test_enable: vk::FALSE,
-            front: stencil_state,
-            back: stencil_state,
-            max_depth_bounds: 1.0,
-            min_depth_bounds: 0.0,
-        };
-
-        let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
-            blend_enable: vk::FALSE,
-            color_write_mask: vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A,
-            src_color_blend_factor: vk::BlendFactor::ONE,
-            dst_color_blend_factor: vk::BlendFactor::ZERO,
-            color_blend_op: vk::BlendOp::ADD,
-            src_alpha_blend_factor: vk::BlendFactor::ONE,
-            dst_alpha_blend_factor: vk::BlendFactor::ZERO,
-            alpha_blend_op: vk::BlendOp::ADD,
-        }];
-
-        let color_blend_state = vk::PipelineColorBlendStateCreateInfo {
-            s_type: vk::StructureType::PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineColorBlendStateCreateFlags::empty(),
-            logic_op_enable: vk::FALSE,
-            logic_op: vk::LogicOp::COPY,
-            attachment_count: color_blend_attachment_states.len() as u32,
-            p_attachments: color_blend_attachment_states.as_ptr(),
-            blend_constants: [0.0, 0.0, 0.0, 0.0],
-        };
-
-        let set_layouts = [ubo_set_layout];
-
-        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo {
-            s_type: vk::StructureType::PIPELINE_LAYOUT_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineLayoutCreateFlags::empty(),
-            set_layout_count: set_layouts.len() as u32,
-            p_set_layouts: set_layouts.as_ptr(),
-            push_constant_range_count: 0,
-            p_push_constant_ranges: ptr::null(),
-        };
-
-        let pipeline_layout = unsafe {
-            device
-                .create_pipeline_layout(&pipeline_layout_create_info, None)
-                .expect("Failed to create pipeline layout!")
-        };
-
-        let graphic_pipeline_create_infos = [vk::GraphicsPipelineCreateInfo {
-            s_type: vk::StructureType::GRAPHICS_PIPELINE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::PipelineCreateFlags::empty(),
-            stage_count: shader_stages.len() as u32,
-            p_stages: shader_stages.as_ptr(),
-            p_vertex_input_state: &vertex_input_state_create_info,
-            p_input_assembly_state: &vertex_input_assembly_state_info,
-            p_tessellation_state: ptr::null(),
-            p_viewport_state: &viewport_state_create_info,
-            p_rasterization_state: &rasterization_statue_create_info,
-            p_multisample_state: &multisample_state_create_info,
-            p_depth_stencil_state: &depth_state_create_info,
-            p_color_blend_state: &color_blend_state,
-            p_dynamic_state: ptr::null(),
-            layout: pipeline_layout,
-            render_pass,
-            subpass: 0,
-            base_pipeline_handle: vk::Pipeline::null(),
-            base_pipeline_index: -1,
-        }];
-
-        let graphics_pipelines = unsafe {
-            device
-                .create_graphics_pipelines(
-                    vk::PipelineCache::null(),
-                    &graphic_pipeline_create_infos,
-                    None,
-                )
-                .expect("Failed to create Graphics Pipeline!.")
-        };
-
-        unsafe {
-            device.destroy_shader_module(vert_shader_module, None);
-            device.destroy_shader_module(frag_shader_module, None);
-        }
-
-        (graphics_pipelines[0], pipeline_layout)
-    }
-
-    fn create_shader_module(device: &ash::Device, code: Vec<u32>) -> vk::ShaderModule {
-        let shader_module_create_info = vk::ShaderModuleCreateInfo {
-            s_type: vk::StructureType::SHADER_MODULE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::ShaderModuleCreateFlags::empty(),
-            code_size: code.len() * 4,
-            p_code: code.as_ptr(),
-        };
-    
-        unsafe {
-            device
-                .create_shader_module(&shader_module_create_info, None)
-                .expect("Failed to create Shader Module!")
-        }
-    }
-
     fn create_command_pool(device: &ash::Device, queue_families: &QueueFamilyIndices) -> vk::CommandPool {
         let command_pool_create_info = vk::CommandPoolCreateInfo {
             s_type: vk::StructureType::COMMAND_POOL_CREATE_INFO,
@@ -1388,27 +1077,6 @@ impl Graphics {
         framebuffers
     }
 
-    fn create_uniform_buffers(device: &ash::Device, device_memory_properties: &vk::PhysicalDeviceMemoryProperties, swapchain_image_count: usize) -> (Vec<vk::Buffer>, Vec<vk::DeviceMemory>) {
-        let buffer_size = ::std::mem::size_of::<UniformBufferObject>();
-    
-        let mut uniform_buffers = vec![];
-        let mut uniform_buffers_memory = vec![];
-    
-        for _ in 0..swapchain_image_count {
-            let (uniform_buffer, uniform_buffer_memory) = Graphics::create_buffer(
-                device,
-                buffer_size as u64,
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                device_memory_properties,
-            );
-            uniform_buffers.push(uniform_buffer);
-            uniform_buffers_memory.push(uniform_buffer_memory);
-        }
-    
-        (uniform_buffers, uniform_buffers_memory)
-    }
-
     pub(crate) fn create_buffer(device: &ash::Device, size: vk::DeviceSize, usage: vk::BufferUsageFlags, required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Buffer, vk::DeviceMemory) {
         let buffer_create_info = vk::BufferCreateInfo {
             s_type: vk::StructureType::BUFFER_CREATE_INFO,
@@ -1484,79 +1152,6 @@ impl Graphics {
                 .create_descriptor_pool(&descriptor_pool_create_info, None)
                 .expect("Failed to create Descriptor Pool!")
         }
-    }
-    
-    pub(crate) fn create_descriptor_sets(device: &ash::Device, descriptor_pool: vk::DescriptorPool,
-        descriptor_set_layout: vk::DescriptorSetLayout,uniforms_buffers: &Vec<vk::Buffer>,
-        texture_image_view: vk::ImageView, texture_sampler: vk::Sampler, swapchain_images_size: usize) -> Vec<vk::DescriptorSet> {
-
-        let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];
-        for _ in 0..swapchain_images_size {
-            layouts.push(descriptor_set_layout);
-        }
-    
-        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_SET_ALLOCATE_INFO,
-            p_next: ptr::null(),
-            descriptor_pool,
-            descriptor_set_count: swapchain_images_size as u32,
-            p_set_layouts: layouts.as_ptr(),
-        };
-    
-        let descriptor_sets = unsafe {
-            device
-                .allocate_descriptor_sets(&descriptor_set_allocate_info)
-                .expect("Failed to allocate descriptor sets!")
-        };
-    
-        for (i, &descritptor_set) in descriptor_sets.iter().enumerate() {
-            let descriptor_buffer_infos = [vk::DescriptorBufferInfo {
-                buffer: uniforms_buffers[i],
-                offset: 0,
-                range: ::std::mem::size_of::<UniformBufferObject>() as u64,
-            }];
-    
-            let descriptor_image_infos = [vk::DescriptorImageInfo {
-                sampler: texture_sampler,
-                image_view: texture_image_view,
-                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            }];
-    
-            let descriptor_write_sets = [
-                vk::WriteDescriptorSet {
-                    // transform uniform
-                    s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
-                    p_next: ptr::null(),
-                    dst_set: descritptor_set,
-                    dst_binding: 0,
-                    dst_array_element: 0,
-                    descriptor_count: 1,
-                    descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                    p_image_info: ptr::null(),
-                    p_buffer_info: descriptor_buffer_infos.as_ptr(),
-                    p_texel_buffer_view: ptr::null(),
-                },
-                vk::WriteDescriptorSet {
-                    // sampler uniform
-                    s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
-                    p_next: ptr::null(),
-                    dst_set: descritptor_set,
-                    dst_binding: 1,
-                    dst_array_element: 0,
-                    descriptor_count: 1,
-                    descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                    p_image_info: descriptor_image_infos.as_ptr(),
-                    p_buffer_info: ptr::null(),
-                    p_texel_buffer_view: ptr::null(),
-                },
-            ];
-    
-            unsafe {
-                device.update_descriptor_sets(&descriptor_write_sets, &[]);
-            }
-        }
-    
-        descriptor_sets
     }
 
     fn create_sync_objects(device: &ash::Device, max_frame_in_flight: usize) -> SyncObjects {

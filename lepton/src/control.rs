@@ -1,5 +1,5 @@
 use winit::{event::{Event, WindowEvent, KeyboardInput}, event_loop::{EventLoop, ControlFlow}};
-use crate::{Graphics, Pattern, fps_limiter::FPSLimiter};
+use crate::{Graphics, PatternTrait, fps_limiter::FPSLimiter};
 
 pub struct Control {
     pub(crate) event_loop: EventLoop<()>
@@ -12,7 +12,7 @@ impl Control {
     }
 
     /// Run the main game loop. Consumes self.
-    pub fn run<K, R>(self, mut graphics: Graphics, mut key_event: Option<K>, renderer: R, print_fps: bool) -> ! 
+    pub fn run<K, R>(self, mut graphics: Graphics, mut key_event: Option<K>, mut renderer: R, print_fps: bool) -> ! 
     where K: KeyEvent + 'static, R: Renderer + 'static {
         let mut tick_counter = FPSLimiter::new();
 
@@ -46,7 +46,8 @@ impl Control {
                 | Event::RedrawRequested(_window_id) => {
                     let delta_time = tick_counter.delta_time();
 
-                    graphics.draw_frame(delta_time, renderer.get_pattern());
+                    renderer.update(delta_time);
+                    graphics.draw_frame(renderer.get_pattern());
                     
                     if print_fps {
                         print!("FPS: {}\r", tick_counter.fps());
@@ -71,6 +72,7 @@ pub trait KeyEvent {
 /// A user-end trait which enables rendering.
 pub trait Renderer {
     /// Draw one frame
-    fn get_pattern(&self) -> &Pattern;
+    fn get_pattern(&self) -> &dyn PatternTrait;
+    fn update(&mut self, delta_time: f32);
 }
 

@@ -1,97 +1,72 @@
 use ash::vk;
 use std::ptr;
 
+use cgmath::{Matrix4, Vector3, Point3, Deg};
+
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
 use crate::model::Model;
+use crate::shader::{Shader, ShaderStarter, ShaderData};
 
-//use cgmath::{Matrix4, Vector3, Point3, Deg};
-//use crate::graphics::{UniformBufferObject};
-
-pub struct Pattern {
-    pub(crate) command_buffers: Vec<vk::CommandBuffer>,
-    //uniform_transform: UniformBufferObject,
-    //uniform_buffers: Vec<vk::Buffer>,
-    //uniform_buffers_memory: Vec<vk::DeviceMemory>,
+pub trait PatternTrait {
+    fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize);
+    fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer;
 }
 
-pub struct UnfinishedPattern {
+pub struct Pattern<D: ShaderData> {
+    shader: Shader<D>,
     command_buffers: Vec<vk::CommandBuffer>,
 }
 
-impl Pattern {
-    /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
-    pub fn begin(graphics: &Graphics) -> UnfinishedPattern {
-        let command_buffers = graphics.allocate_command_buffer();
-
-        for (i, &command_buffer) in command_buffers.iter().enumerate() {
-            graphics.begin_command_buffer(command_buffer, i);
-        }
-
-        UnfinishedPattern { command_buffers }
-    }
-
-    /*/// Update the pattern uniform buffer
-    pub(crate) fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize, delta_time: f32) {
-        self.uniform_transform.model =
-            Matrix4::from_axis_angle(Vector3::new(0.0, 0.0, 1.0), Deg(90.0) * delta_time)
-                * self.uniform_transform.model;
-
-        let ubos = [self.uniform_transform.clone()];
-
-        let buffer_size = (std::mem::size_of::<UniformBufferObject>() * ubos.len()) as u64;
-
-        unsafe {
-            let data_ptr =graphics.device.map_memory(self.uniform_buffers_memory[image_index],
-                0, buffer_size, vk::MemoryMapFlags::empty())
-                    .expect("Failed to Map Memory") as *mut UniformBufferObject;
-
-            data_ptr.copy_from_nonoverlapping(ubos.as_ptr(), ubos.len());
-
-            graphics.device.unmap_memory(self.uniform_buffers_memory[image_index]);
-        }
-    }*/
+pub struct UnfinishedPattern<D: ShaderData> {
+    pub(crate) shader: Shader<D>,
+    command_buffers: Vec<vk::CommandBuffer>,
 }
 
-impl UnfinishedPattern {
+impl<D: ShaderData> PatternTrait for Pattern<D> {
+    fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize) {
+        self.shader.update_uniform_buffer(graphics, image_index);
+    }
+    fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer {
+        &self.command_buffers[image_index]
+    }
+}
+
+impl<D: ShaderData> Pattern<D> {
+    /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
+    pub fn begin(graphics: &Graphics, shader_starter: ShaderStarter<D>) -> UnfinishedPattern<D> {
+        let command_buffers = graphics.allocate_command_buffer();
+        let shader = Shader::new(graphics, shader_starter);
+
+        for (i, &command_buffer) in command_buffers.iter().enumerate() {
+            graphics.begin_command_buffer(command_buffer, &shader.pipeline, i);
+        }
+
+        UnfinishedPattern::<D> { shader, command_buffers }
+    }
+
+    pub fn update_uniform(&mut self, delta_time: f32) {
+        self.shader.update_uniform(delta_time);
+    }
+}
+
+impl<D: ShaderData> UnfinishedPattern<D> {
     /// Wrap up the unfinished pattern. Consumes self.
-    pub fn end(self, graphics: &Graphics) -> Pattern {
+    pub fn end(self, graphics: &Graphics) -> Pattern<D> {
         for command_buffer in self.command_buffers.iter() {
             graphics.end_command_buffer(*command_buffer);
         }
 
-        /*let uniform_transform =  UniformBufferObject {
-            model: Matrix4::from_angle_z(Deg(90.0)),
-            view: Matrix4::look_at_rh(
-                Point3::new(2.0, 2.0, 2.0),
-                Point3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.0, 0.0, 1.0),
-            ),
-            proj: {
-                let mut proj = cgmath::perspective(
-                    Deg(45.0),
-                    graphics.swapchain_extent.width as f32
-                        / graphics.swapchain_extent.height as f32,
-                    0.1,
-                    10.0,
-                );
-                proj[1][1] = proj[1][1] * -1.0;
-                proj
-            },
-        };*/
-
-        Pattern { 
+        Pattern::<D> {
+            shader: self.shader,
             command_buffers: self.command_buffers,
-            //uniform_transform,
-            //uniform_buffers,
-            //uniform_buffers_memory,
         }
     }
 
     /// Inside the pattern, render a model.
-    pub fn render(&self, graphics: &Graphics, model: &Model) {
+    pub(crate) fn render(&self, graphics: &Graphics, model: &Model<D>) {
         for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
-            model.render(graphics, &command_buffer, i);
+            model.render(graphics, &self.shader.get_pipeline_layout(), &command_buffer, i);
         }
     }
 }
@@ -114,7 +89,7 @@ impl Graphics {
     }
 
     /// Begin the ommand buffer. Panics if buffer cannot be started.
-    fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer, buffer_index: usize) {
+    fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer, pipeline: &vk::Pipeline, buffer_index: usize) {
         let command_buffer_begin_info = vk::CommandBufferBeginInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
             p_next: ptr::null(),
@@ -149,7 +124,7 @@ impl Graphics {
             self.device.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.graphics_pipeline,
+                *pipeline,
             );
         }
     }

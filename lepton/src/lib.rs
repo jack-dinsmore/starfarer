@@ -1,8 +1,8 @@
-mod shader;
+pub mod shader;
+pub mod model;
 mod pattern;
 mod graphics;
 mod control;
-pub mod model;
 mod fps_limiter;
 
 pub use pattern::*;
@@ -25,4 +25,8 @@ mod constants {
         ClearValue { color: ClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] } },
         ClearValue { depth_stencil: ClearDepthStencilValue { depth: 1.0, stencil: 0, } },
     ];
+}
+
+pub(crate) trait Unload {
+    fn unload(&mut self, device: &ash::Device); 
 }

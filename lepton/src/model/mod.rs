@@ -6,13 +6,10 @@ use std::cmp::max;
 
 mod primitives;
 pub use primitives::{VertexV3};
-use crate::Graphics;
+use crate::{Graphics, Unload, UnfinishedPattern};
+use crate::shader::{Shader, ShaderData};
 
-trait Unload {
-    fn unload(&mut self, device: &ash::Device); 
-}
-
-pub struct Model {
+pub struct Model<D: ShaderData> {
     vertex_buffer: vk::Buffer,
     index_buffer: vk::Buffer,
     num_indices: u32,
@@ -25,10 +22,12 @@ pub struct Model {
     texture_sampler: vk::Sampler,
     texture_image_memory: vk::DeviceMemory,
     descriptor_sets: Vec<vk::DescriptorSet>,
+
+    phantom: std::marker::PhantomData<D>,
 }
 
-impl Model {
-    pub fn new(graphics: &Graphics, obj_path: &Path, texture_path: &Path) -> Result<Self> {
+impl<D: ShaderData> Model<D> {
+    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern<D>, obj_path: &Path, texture_path: &Path) -> Result<Self> {
         let (vertices, indices) = Self::get_data(obj_path)?;
 
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
@@ -38,9 +37,9 @@ impl Model {
         let (vertex_buffer, vertex_buffer_memory) = graphics.create_vertex_buffer(&vertices);
         let (index_buffer, index_buffer_memory) = graphics.create_index_buffer(&indices);
 
-        let descriptor_sets = graphics.create_model_descriptor_set(texture_image_view, texture_sampler);
+        let descriptor_sets = graphics.create_descriptor_sets(&pattern.shader, texture_image_view, texture_sampler);
             
-        Ok(Model {
+        let model = Model::<D> {
             vertex_buffer,
             index_buffer,
             vertex_buffer_memory,
@@ -54,10 +53,15 @@ impl Model {
             texture_image_memory,
 
             descriptor_sets,
-        })
+            phantom: std::marker::PhantomData,
+        };
+
+        pattern.render(graphics, &model);
+
+        Ok(model)
     }
 
-    pub(crate) fn render(&self, graphics: &Graphics, command_buffer: &vk::CommandBuffer, frame_index: usize) {
+    pub(crate) fn render(&self, graphics: &Graphics, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize) {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
         let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
@@ -66,7 +70,7 @@ impl Model {
             graphics.device.cmd_bind_vertex_buffers(*command_buffer, 0, &vertex_buffers, &offsets);
             graphics.device.cmd_bind_index_buffer(*command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
             graphics.device.cmd_bind_descriptor_sets(*command_buffer, vk::PipelineBindPoint::GRAPHICS,
-                graphics.pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
+                *pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
 
             graphics.device.cmd_draw_indexed(*command_buffer, self.num_indices, 1, 0, 0, 0);
         }
@@ -111,7 +115,7 @@ impl Model {
     }
 }
 
-impl Unload for Model {
+impl<D: ShaderData> Unload for Model<D> {
     fn unload(&mut self, device: &ash::Device) {
         unsafe {
             device.destroy_buffer(self.index_buffer, None);
@@ -327,8 +331,71 @@ impl Graphics {
         (index_buffer, index_buffer_memory)
     }
 
-    fn create_model_descriptor_set(&self, texture_image_view: vk::ImageView, texture_sampler: vk::Sampler) -> Vec<vk::DescriptorSet> {
-        Graphics::create_descriptor_sets(&self.device, self.descriptor_pool, self.ubo_layout, &self.uniform_buffers, texture_image_view, texture_sampler, self.swapchain_images.len())
+    fn create_descriptor_sets<D: ShaderData>(&self, shader: &Shader<D>, texture_image_view: vk::ImageView,
+        texture_sampler: vk::Sampler) -> Vec<vk::DescriptorSet> {
+
+        let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];
+        for _ in 0..self.swapchain_images.len() {
+            layouts.push(self.ubo_layout);
+        }
+    
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo {
+            s_type: vk::StructureType::DESCRIPTOR_SET_ALLOCATE_INFO,
+            p_next: ptr::null(),
+            descriptor_pool: self.descriptor_pool,
+            descriptor_set_count: self.swapchain_images.len() as u32,
+            p_set_layouts: layouts.as_ptr(),
+        };
+    
+        let descriptor_sets = unsafe {
+            self.device
+                .allocate_descriptor_sets(&descriptor_set_allocate_info)
+                .expect("Failed to allocate descriptor sets!")
+        };
+    
+        let descriptor_image_infos = [vk::DescriptorImageInfo {
+            sampler: texture_sampler,
+            image_view: texture_image_view,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        }];
+        let descriptor_buffer_infos = (0..descriptor_sets.len()).map(|i| shader.get_uniform_descriptor_buffer_info(i))
+            .collect::<Vec<Vec<vk::DescriptorBufferInfo>>>();
+        for (i, &descritptor_set) in descriptor_sets.iter().enumerate() {
+            let descriptor_write_sets = [
+                vk::WriteDescriptorSet {
+                    // transform uniform
+                    s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
+                    p_next: ptr::null(),
+                    dst_set: descritptor_set,
+                    dst_binding: 0,
+                    dst_array_element: 0,
+                    descriptor_count: 1,
+                    descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                    p_image_info: ptr::null(),
+                    p_buffer_info: descriptor_buffer_infos[i].as_ptr(),
+                    p_texel_buffer_view: ptr::null(),
+                },
+                vk::WriteDescriptorSet {
+                    // sampler uniform
+                    s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
+                    p_next: ptr::null(),
+                    dst_set: descritptor_set,
+                    dst_binding: 1,
+                    dst_array_element: 0,
+                    descriptor_count: 1,
+                    descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                    p_image_info: descriptor_image_infos.as_ptr(),
+                    p_buffer_info: ptr::null(),
+                    p_texel_buffer_view: ptr::null(),
+                },
+            ];
+    
+            unsafe {
+                self.device.update_descriptor_sets(&descriptor_write_sets, &[]);
+            }
+        }
+    
+        descriptor_sets
     }
 
     fn copy_buffer_to_image(&self, submit_queue: vk::Queue, buffer: vk::Buffer, image: vk::Image, width: u32, height: u32) {
