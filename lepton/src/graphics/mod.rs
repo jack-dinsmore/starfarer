@@ -4,13 +4,13 @@ mod tools;
 mod primitives;
 
 use ash::vk;
-use cgmath::{Deg, Matrix4, Point3, Vector3};
 use winit::event_loop::EventLoop;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
-use crate::{Control, PatternTrait, constants::*, shader::{Shader, CameraData}};
+use crate::{Control, PatternTrait, constants::*, Unload};
+use crate::{model::Model, shader::Shader};
 pub use primitives::*;
 //use crate::vk_core::{share, structures::DeviceExtension};
 use debug::ValidationInfo;
@@ -60,7 +60,10 @@ pub struct Graphics {
     pub(crate) in_flight_fences: Vec<vk::Fence>,
     pub(crate) current_frame: usize,
 
-    pub(crate) is_framebuffer_resized: bool,
+    pub(crate) swapchain_current_version: u32,
+    pub(crate) swapchain_ideal_version: u32,
+    pub(crate) window_width: u32,
+    pub(crate) window_height: u32,
 }
 
 
@@ -92,7 +95,7 @@ impl Graphics {
     pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32) -> Self {
         let window = Graphics::init_window(&control.event_loop, window_title, window_width, window_height);
 
-        // init vulkan stuff
+        // Create basic Vulkan stuff
         let entry = ash::Entry::linked();
         let instance = Graphics::create_instance(&entry, window_title, VALIDATION.is_enable, &VALIDATION.required_validation_layers.to_vec());
         let surface_stuff = Graphics::create_surface(&entry, &instance, &window, window_width, window_height);
@@ -103,6 +106,8 @@ impl Graphics {
         let (device, queue_family) = Graphics::create_logical_device(&instance, physical_device, &VALIDATION, &DEVICE_EXTENSIONS, &surface_stuff);
         let graphics_queue = unsafe { device.get_device_queue(queue_family.graphics_family.unwrap(), 0) };
         let present_queue = unsafe { device.get_device_queue(queue_family.present_family.unwrap(), 0) };
+
+        // Create swapchain
         let swapchain_stuff = Graphics::create_swapchain(&instance, &device, physical_device, &window, &surface_stuff, &queue_family);
         let swapchain_imageviews = Graphics::create_image_views(&device, swapchain_stuff.swapchain_format, &swapchain_stuff.swapchain_images);
         let render_pass = Graphics::create_render_pass(&instance, &device, physical_device, swapchain_stuff.swapchain_format, msaa_samples);
@@ -115,16 +120,8 @@ impl Graphics {
         let framebuffers = Graphics::create_framebuffers(
             &device, render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
         let ubo_layout = crate::shader::create_descriptor_set_layout(&device);
-        
-        
-        /*let (shader, shader_stages) = Shader::new(self, CameraData::new(
-            swapchain_stuff.swapchain_extent.width as f32 / swapchain_stuff.swapchain_extent.height as f32));
-
-        let (graphics_pipeline, pipeline_layout) = Graphics::create_graphics_pipeline(&device, render_pass, swapchain_stuff.swapchain_extent, ubo_layout, msaa_samples);*/
-        
         let sync_objects = Graphics::create_sync_objects(&device, MAX_FRAMES_IN_FLIGHT);
 
-        // cleanup(); the 'drop' function will take care of it.
         Graphics {
             window,
 
@@ -173,7 +170,10 @@ impl Graphics {
             in_flight_fences: sync_objects.inflight_fences,
             current_frame: 0,
 
-            is_framebuffer_resized: false,
+            swapchain_current_version: 0,
+            swapchain_ideal_version: 0,
+            window_width,
+            window_height,
         }
     }
 
@@ -191,7 +191,7 @@ impl Graphics {
         self.window.request_redraw();
     }
 
-    pub(crate) fn draw_frame(&mut self, pattern: &dyn PatternTrait) {
+    pub(crate) fn draw_frame(&mut self, pattern: &mut dyn PatternTrait) {
         let wait_fences = [self.in_flight_fences[self.current_frame]];
 
         unsafe {
@@ -200,7 +200,7 @@ impl Graphics {
                 .expect("Failed to wait for Fence!");
         }
 
-        let (image_index, _is_sub_optimal) = unsafe {
+        let (image_index, is_sub_optimal) = unsafe {
             let result = self.swapchain_loader.acquire_next_image(
                 self.swapchain,
                 std::u64::MAX,
@@ -269,19 +269,161 @@ impl Graphics {
                 .queue_present(self.present_queue, &present_info)
         };
 
-        let is_resized = match result {
-            Ok(_) => self.is_framebuffer_resized,
+        let must_resize = match result {
+            Ok(_) => self.swapchain_ideal_version != self.swapchain_current_version,
             Err(vk_result) => match vk_result {
                 vk::Result::ERROR_OUT_OF_DATE_KHR | vk::Result::SUBOPTIMAL_KHR => true,
                 _ => panic!("Failed to execute queue present."),
             },
         };
-        if is_resized {
-            self.is_framebuffer_resized = false;
+        if must_resize {
+            self.swapchain_current_version = self.swapchain_ideal_version;
             self.recreate_swapchain();
         }
-
+        
+        pattern.check_swapchain_version(&self);
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+    }
+
+    pub(crate) fn resize_framebuffer(&mut self, new_width: u32, new_height: u32) {
+        self.window_width = new_width;
+        self.window_height = new_height;
+        self.swapchain_ideal_version += 1;
+    }
+
+    pub(crate) fn create_image_view(device: &ash::Device, image: vk::Image, format: vk::Format,
+        aspect_flags: vk::ImageAspectFlags, mip_levels: u32) -> vk::ImageView {
+        let imageview_create_info = vk::ImageViewCreateInfo {
+            s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
+            p_next: ptr::null(),
+            flags: vk::ImageViewCreateFlags::empty(),
+            view_type: vk::ImageViewType::TYPE_2D,
+            format,
+            components: vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            },
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: aspect_flags,
+                base_mip_level: 0,
+                level_count: mip_levels,
+                base_array_layer: 0,
+                layer_count: 1,
+            },
+            image,
+        };
+    
+        unsafe {
+            device
+                .create_image_view(&imageview_create_info, None)
+                .expect("Failed to create Image View!")
+        }
+    }
+
+    pub(crate) fn create_image(device: &ash::Device, width: u32, height: u32, mip_levels: u32, num_samples: vk::SampleCountFlags, format: vk::Format, tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Image, vk::DeviceMemory) {
+        let image_create_info = vk::ImageCreateInfo {
+            s_type: vk::StructureType::IMAGE_CREATE_INFO,
+            p_next: ptr::null(),
+            flags: vk::ImageCreateFlags::empty(),
+            image_type: vk::ImageType::TYPE_2D,
+            format,
+            mip_levels,
+            array_layers: 1,
+            samples: num_samples,
+            tiling,
+            usage,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_family_index_count: 0,
+            p_queue_family_indices: ptr::null(),
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            extent: vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            },
+        };
+    
+        let texture_image = unsafe {
+            device
+                .create_image(&image_create_info, None)
+                .expect("Failed to create Texture Image!")
+        };
+    
+        let image_memory_requirement = unsafe { device.get_image_memory_requirements(texture_image) };
+        let memory_allocate_info = vk::MemoryAllocateInfo {
+            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
+            p_next: ptr::null(),
+            allocation_size: image_memory_requirement.size,
+            memory_type_index: Graphics::find_memory_type(
+                image_memory_requirement.memory_type_bits,
+                required_memory_properties,
+                device_memory_properties,
+            ),
+        };
+    
+        let texture_image_memory = unsafe {
+            device
+                .allocate_memory(&memory_allocate_info, None)
+                .expect("Failed to allocate Texture Image memory!")
+        };
+    
+        unsafe {
+            device
+                .bind_image_memory(texture_image, texture_image_memory, 0)
+                .expect("Failed to bind Image Memmory!");
+        }
+    
+        (texture_image, texture_image_memory)
+    }
+
+    pub(crate) fn create_buffer(device: &ash::Device, size: vk::DeviceSize, usage: vk::BufferUsageFlags, required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Buffer, vk::DeviceMemory) {
+        let buffer_create_info = vk::BufferCreateInfo {
+            s_type: vk::StructureType::BUFFER_CREATE_INFO,
+            p_next: ptr::null(),
+            flags: vk::BufferCreateFlags::empty(),
+            size,
+            usage,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_family_index_count: 0,
+            p_queue_family_indices: ptr::null(),
+        };
+    
+        let buffer = unsafe {
+            device
+                .create_buffer(&buffer_create_info, None)
+                .expect("Failed to create Vertex Buffer")
+        };
+    
+        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
+        let memory_type = Graphics::find_memory_type(
+            mem_requirements.memory_type_bits,
+            required_memory_properties,
+            device_memory_properties,
+        );
+    
+        let allocate_info = vk::MemoryAllocateInfo {
+            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
+            p_next: ptr::null(),
+            allocation_size: mem_requirements.size,
+            memory_type_index: memory_type,
+        };
+    
+        let buffer_memory = unsafe {
+            device
+                .allocate_memory(&allocate_info, None)
+                .expect("Failed to allocate vertex buffer memory!")
+        };
+    
+        unsafe {
+            device
+                .bind_buffer_memory(buffer, buffer_memory, 0)
+                .expect("Failed to bind Buffer");
+        }
+    
+        (buffer, buffer_memory)
     }
 }
 
@@ -292,6 +434,7 @@ impl Graphics {
         winit::window::WindowBuilder::new()
             .with_title(title)
             .with_inner_size(winit::dpi::LogicalSize::new(width, height))
+            //.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
             .build(event_loop)
             .expect("Failed to create window.")
     }
@@ -775,8 +918,42 @@ impl Graphics {
         }
     }
 
-    fn recreate_swapchain(&mut self, ) {
-        panic!("Cannot recreate the swapchain yet.")
+    fn recreate_swapchain(&mut self) {
+        unsafe {
+            self.device.device_wait_idle().expect("Failed to wait device idle!")
+        };
+        self.unload_self();
+
+        let surface_suff = SurfaceStuff {
+            surface_loader: self.surface_loader.clone(),
+            surface: self.surface,
+            screen_width: self.window_width,
+            screen_height: self.window_height,
+        };
+
+        let swapchain_stuff = Graphics::create_swapchain(&self.instance, &self.device, self.physical_device, &self.window, &surface_suff, &self.queue_family);
+        self.swapchain_loader = swapchain_stuff.swapchain_loader;
+        self.swapchain = swapchain_stuff.swapchain;
+        self.swapchain_images = swapchain_stuff.swapchain_images;
+        self.swapchain_format = swapchain_stuff.swapchain_format;
+        self.swapchain_extent = swapchain_stuff.swapchain_extent;
+
+        self.swapchain_imageviews = Graphics::create_image_views(&self.device, self.swapchain_format, &self.swapchain_images);
+        self.render_pass = Graphics::create_render_pass(&self.instance, &self.device, self.physical_device, self.swapchain_format, self.msaa_samples);
+        let color_resources = Graphics::create_color_resources(&self.device, self.swapchain_format,
+            self.swapchain_extent, &self.memory_properties, self.msaa_samples);
+        self.color_image = color_resources.0;
+        self.color_image_view = color_resources.1;
+        self.color_image_memory = color_resources.2;
+
+        let depth_resources = Graphics::create_depth_resources(&self.instance, &self.device, self.physical_device,
+            self.command_pool, self.graphics_queue, self.swapchain_extent, &self.memory_properties, self.msaa_samples);
+        self.depth_image = depth_resources.0;
+        self.depth_image_view = depth_resources.1;
+        self.depth_image_memory = depth_resources.2;
+
+        self.framebuffers = Graphics::create_framebuffers(&self.device, self.render_pass, &self.swapchain_imageviews,
+            self.depth_image_view, self.color_image_view, self.swapchain_extent);
     }
 
     fn choose_swapchain_format(available_formats: &Vec<vk::SurfaceFormatKHR>) -> vk::SurfaceFormatKHR {
@@ -883,94 +1060,6 @@ impl Graphics {
         (color_image, color_image_view, color_image_memory)
     }
 
-    pub(crate) fn create_image_view(device: &ash::Device, image: vk::Image, format: vk::Format,
-        aspect_flags: vk::ImageAspectFlags, mip_levels: u32) -> vk::ImageView {
-        let imageview_create_info = vk::ImageViewCreateInfo {
-            s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::ImageViewCreateFlags::empty(),
-            view_type: vk::ImageViewType::TYPE_2D,
-            format,
-            components: vk::ComponentMapping {
-                r: vk::ComponentSwizzle::IDENTITY,
-                g: vk::ComponentSwizzle::IDENTITY,
-                b: vk::ComponentSwizzle::IDENTITY,
-                a: vk::ComponentSwizzle::IDENTITY,
-            },
-            subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: aspect_flags,
-                base_mip_level: 0,
-                level_count: mip_levels,
-                base_array_layer: 0,
-                layer_count: 1,
-            },
-            image,
-        };
-    
-        unsafe {
-            device
-                .create_image_view(&imageview_create_info, None)
-                .expect("Failed to create Image View!")
-        }
-    }
-
-    pub(crate) fn create_image(device: &ash::Device, width: u32, height: u32, mip_levels: u32, num_samples: vk::SampleCountFlags, format: vk::Format, tiling: vk::ImageTiling,
-        usage: vk::ImageUsageFlags,required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Image, vk::DeviceMemory) {
-        let image_create_info = vk::ImageCreateInfo {
-            s_type: vk::StructureType::IMAGE_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::ImageCreateFlags::empty(),
-            image_type: vk::ImageType::TYPE_2D,
-            format,
-            mip_levels,
-            array_layers: 1,
-            samples: num_samples,
-            tiling,
-            usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            queue_family_index_count: 0,
-            p_queue_family_indices: ptr::null(),
-            initial_layout: vk::ImageLayout::UNDEFINED,
-            extent: vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            },
-        };
-    
-        let texture_image = unsafe {
-            device
-                .create_image(&image_create_info, None)
-                .expect("Failed to create Texture Image!")
-        };
-    
-        let image_memory_requirement = unsafe { device.get_image_memory_requirements(texture_image) };
-        let memory_allocate_info = vk::MemoryAllocateInfo {
-            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
-            p_next: ptr::null(),
-            allocation_size: image_memory_requirement.size,
-            memory_type_index: Graphics::find_memory_type(
-                image_memory_requirement.memory_type_bits,
-                required_memory_properties,
-                device_memory_properties,
-            ),
-        };
-    
-        let texture_image_memory = unsafe {
-            device
-                .allocate_memory(&memory_allocate_info, None)
-                .expect("Failed to allocate Texture Image memory!")
-        };
-    
-        unsafe {
-            device
-                .bind_image_memory(texture_image, texture_image_memory, 0)
-                .expect("Failed to bind Image Memmory!");
-        }
-    
-        (texture_image, texture_image_memory)
-    }
-
     fn find_memory_type(type_filter: u32, required_properties: vk::MemoryPropertyFlags, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> u32 {
         for (i, memory_type) in mem_properties.memory_types.iter().enumerate() {
             if (type_filter & (1 << i)) > 0 && memory_type.property_flags.contains(required_properties)
@@ -1072,53 +1161,6 @@ impl Graphics {
         framebuffers
     }
 
-    pub(crate) fn create_buffer(device: &ash::Device, size: vk::DeviceSize, usage: vk::BufferUsageFlags, required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Buffer, vk::DeviceMemory) {
-        let buffer_create_info = vk::BufferCreateInfo {
-            s_type: vk::StructureType::BUFFER_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::BufferCreateFlags::empty(),
-            size,
-            usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            queue_family_index_count: 0,
-            p_queue_family_indices: ptr::null(),
-        };
-    
-        let buffer = unsafe {
-            device
-                .create_buffer(&buffer_create_info, None)
-                .expect("Failed to create Vertex Buffer")
-        };
-    
-        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-        let memory_type = Graphics::find_memory_type(
-            mem_requirements.memory_type_bits,
-            required_memory_properties,
-            device_memory_properties,
-        );
-    
-        let allocate_info = vk::MemoryAllocateInfo {
-            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
-            p_next: ptr::null(),
-            allocation_size: mem_requirements.size,
-            memory_type_index: memory_type,
-        };
-    
-        let buffer_memory = unsafe {
-            device
-                .allocate_memory(&allocate_info, None)
-                .expect("Failed to allocate vertex buffer memory!")
-        };
-    
-        unsafe {
-            device
-                .bind_buffer_memory(buffer, buffer_memory, 0)
-                .expect("Failed to bind Buffer");
-        }
-    
-        (buffer, buffer_memory)
-    }
-
     fn create_descriptor_pool(device: &ash::Device, swapchain_images_size: usize) -> vk::DescriptorPool {
         let pool_sizes = [
             vk::DescriptorPoolSize {
@@ -1191,5 +1233,26 @@ impl Graphics {
         }
     
         sync_objects
+    }
+
+    fn unload_self(&mut self) {
+        unsafe {
+            self.device.destroy_image(self.depth_image, None);
+            self.device.destroy_image_view(self.depth_image_view, None);
+            self.device.free_memory(self.depth_image_memory, None);
+
+            self.device.destroy_image(self.color_image, None);
+            self.device.destroy_image_view(self.color_image_view, None);
+            self.device.free_memory(self.color_image_memory, None);
+
+            for &framebuffer in self.framebuffers.iter() {
+                self.device.destroy_framebuffer(framebuffer, None);
+            }
+            self.device.destroy_render_pass(self.render_pass, None);
+            for &image_view in self.swapchain_imageviews.iter() {
+                self.device.destroy_image_view(image_view, None);
+            }
+            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+        }
     }
 }

@@ -95,6 +95,53 @@ impl<D: ShaderData> Shader<D> {
             range: ::std::mem::size_of::<D>() as u64,
         }]
     }
+
+    pub(crate) fn recreate_swapchain(&mut self, graphics: &Graphics) {
+        let vert_shader_module = graphics.create_shader_module(D::VERTEX_CODE.to_vec());
+        let frag_shader_module = graphics.create_shader_module(D::FRAGMENT_CODE.to_vec());
+
+        let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
+
+        let shader_stages = [
+            vk::PipelineShaderStageCreateInfo {
+                // Vertex Shader
+                s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
+                p_next: ptr::null(),
+                flags: vk::PipelineShaderStageCreateFlags::empty(),
+                module: vert_shader_module,
+                p_name: main_function_name.as_ptr(),
+                p_specialization_info: ptr::null(),
+                stage: vk::ShaderStageFlags::VERTEX,
+            },
+            vk::PipelineShaderStageCreateInfo {
+                // Fragment Shader
+                s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
+                p_next: ptr::null(),
+                flags: vk::PipelineShaderStageCreateFlags::empty(),
+                module: frag_shader_module,
+                p_name: main_function_name.as_ptr(),
+                p_specialization_info: ptr::null(),
+                stage: vk::ShaderStageFlags::FRAGMENT,
+            },
+        ];
+
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline(&shader_stages);
+
+        unsafe {
+            graphics.device.destroy_shader_module(vert_shader_module, None);
+            graphics.device.destroy_shader_module(frag_shader_module, None);
+        }
+
+        self.pipeline = pipeline;
+        self.pipeline_layout = pipeline_layout;
+    }
+
+    pub(crate) fn destroy_pipeline(&mut self, device: &ash::Device) {
+        unsafe {
+            device.destroy_pipeline(self.pipeline, None);
+            device.destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
 }
 
 impl<D: ShaderData> Unload for Shader<D> {
@@ -104,6 +151,8 @@ impl<D: ShaderData> Unload for Shader<D> {
                 device.destroy_buffer(*uniform_buffer, None);
                 device.free_memory(*uniform_buffer_memory, None);
             }
+
+            self.destroy_pipeline(device);
         }
     }
 }

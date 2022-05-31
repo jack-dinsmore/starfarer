@@ -24,7 +24,10 @@ unsafe extern "system" fn vulkan_debug_utils_callback(
         _ => "[Unknown]",
     };
     let message = CStr::from_ptr((*p_callback_data).p_message);
-    println!("[Debug]{}{}{:?}", severity, types, message);
+    if &message.to_string_lossy()[0..17] != "vkQueuePresentKHR" {
+        /// Ignore the warning about a suboptimal KHR.
+        println!("[Debug]{}{}{:?}", severity, types, message);
+    }
 
     vk::FALSE
 }

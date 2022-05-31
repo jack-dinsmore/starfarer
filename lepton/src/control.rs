@@ -47,6 +47,10 @@ impl Control {
                                 },
                             }
                         },
+                        | WindowEvent::Resized(new_size) => {
+                            graphics.terminate();
+                            graphics.resize_framebuffer(new_size.width, new_size.height);
+                        },
                         | _ => {},
                     }
                 },
@@ -120,7 +124,7 @@ pub trait Lepton: 'static {
     fn keyup(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
 
     /// Determine which pattern to use for drawing
-    fn get_pattern(&self) -> &dyn PatternTrait;
+    fn get_pattern(&mut self) -> &mut dyn PatternTrait;
 
     // Update all the objects
     fn update(&mut self, delta_time: f32);

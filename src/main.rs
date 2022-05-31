@@ -7,10 +7,11 @@ use lepton::model::Model;
 use cgmath::{prelude::*, Vector3};
 
 const WINDOW_TITLE: &'static str = "Starfarer";
-const WINDOW_WIDTH: u32 = 800;
-const WINDOW_HEIGHT: u32 = 600;
 const MODEL_PATH: &'static str = "assets/chalet.obj";
 const TEXTURE_PATH: &'static str = "assets/chalet.jpg";
+const WINDOW_WIDTH: u32 = 1920;
+const WINDOW_HEIGHT: u32 = 1080;
+
 
 struct Starfarer {
     pattern: Pattern<CameraData>,
@@ -21,11 +22,12 @@ struct Starfarer {
 impl Starfarer {
     fn new(graphics: &Graphics) -> Starfarer {
 
-        let pattern = Pattern::begin(&graphics);
-        Model::new(&graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH)).expect("Model creation failed");
-        let pattern = pattern.end(&graphics);
+        let mut pattern = Pattern::begin(graphics);
+        pattern.add(Model::new(graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH))
+            .expect("Model creation failed"));
+        let pattern = pattern.end(graphics);
 
-        let camera = Camera::new(&graphics);
+        let camera = Camera::new(graphics);
 
         Starfarer {
             pattern,
@@ -49,8 +51,8 @@ impl Lepton for Starfarer {
         self.camera.update(self.pattern.uniform());
     }
 
-    fn get_pattern(&self) -> &dyn PatternTrait {
-        &self.pattern
+    fn get_pattern(&mut self) -> &mut dyn PatternTrait {
+        &mut self.pattern
     }
     
     fn keydown(&mut self, vk: VirtualKeyCode) -> bool {
@@ -75,7 +77,7 @@ impl Drop for Starfarer {
 
 fn main() {
     let control = Control::new();
-    let graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
-    let starfarer = Starfarer::new(&graphics);
+    let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
+    let starfarer = Starfarer::new(&mut graphics);
     control.run(graphics, starfarer, true);
 }

@@ -10,6 +10,8 @@ pub use graphics::*;
 pub use control::*;
 pub use winit::event::VirtualKeyCode;
 
+use ash::vk;
+
 /// A module to contain all of the constants which are set within the crate.
 mod constants {
     use ash::vk::{ClearValue, ClearColorValue, ClearDepthStencilValue};

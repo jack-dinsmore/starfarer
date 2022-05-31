@@ -8,9 +8,12 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 - Added shaders
 - Added a camera
 
-### Next:
-- Either forbid screen resizing or fix the recreate swapchain function
-- Fullscreen
-- Camera steering
+## May 31
+
+- Fullscreen & recreate swapchain. Also worked on some ship designs
+- Designed a method to compute how good RCS placement is for custom-built ships.
+
+## Next:
+- Camera steering with mouse pointer
 - Model locations (each must have their own uniform buffer)
 - Design a ship

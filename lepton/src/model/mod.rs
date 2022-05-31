@@ -27,7 +27,7 @@ pub struct Model<D: ShaderData> {
 }
 
 impl<D: ShaderData> Model<D> {
-    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern<D>, obj_path: &Path, texture_path: &Path) -> Result<Self> {
+    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern<D>, obj_path: &Path, texture_path: &Path) -> Result<Model<D>> {
         let (vertices, indices) = Self::get_data(obj_path)?;
 
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
@@ -55,8 +55,6 @@ impl<D: ShaderData> Model<D> {
             descriptor_sets,
             phantom: std::marker::PhantomData,
         };
-
-        pattern.render(graphics, &model);
 
         Ok(model)
     }

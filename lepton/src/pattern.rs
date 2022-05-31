@@ -2,23 +2,26 @@ use ash::vk;
 use std::ptr;
 
 use crate::constants::CLEAR_VALUES;
-use crate::Graphics;
+use crate::{Graphics};
 use crate::model::Model;
 use crate::shader::{Shader, ShaderData};
 
 pub trait PatternTrait {
     fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize);
     fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer;
+    fn check_swapchain_version(&mut self, graphics: &Graphics);
 }
 
 pub struct Pattern<D: ShaderData> {
     shader: Shader<D>,
+    models: Vec<Model<D>>,
     command_buffers: Vec<vk::CommandBuffer>,
+    swapchain_current_version: u32,
 }
 
 pub struct UnfinishedPattern<D: ShaderData> {
     pub(crate) shader: Shader<D>,
-    command_buffers: Vec<vk::CommandBuffer>,
+    models: Vec<Model<D>>,
 }
 
 impl<D: ShaderData> PatternTrait for Pattern<D> {
@@ -28,19 +31,42 @@ impl<D: ShaderData> PatternTrait for Pattern<D> {
     fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer {
         &self.command_buffers[image_index]
     }
+    fn check_swapchain_version(&mut self, graphics: &Graphics) {
+        if graphics.swapchain_ideal_version != self.swapchain_current_version {
+            // Clean swapchain
+            unsafe {
+                graphics.device.free_command_buffers(graphics.command_pool, &self.command_buffers);
+            }
+            self.shader.destroy_pipeline(&graphics.device);
+            
+            // Recreate swapchain
+            self.shader.recreate_swapchain(graphics);
+
+            self.command_buffers = graphics.allocate_command_buffer();
+            for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
+                graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
+    
+                for model in &self.models {
+                    model.render(graphics, &self.shader.pipeline_layout, &command_buffer, i);
+                }
+    
+                graphics.end_command_buffer(command_buffer);
+            }
+
+            self.swapchain_current_version = graphics.swapchain_ideal_version;
+        }
+    }
 }
 
 impl<D: ShaderData> Pattern<D> {
     /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
     pub fn begin(graphics: &Graphics) -> UnfinishedPattern<D> {
-        let command_buffers = graphics.allocate_command_buffer();
         let shader = Shader::new(graphics);
 
-        for (i, &command_buffer) in command_buffers.iter().enumerate() {
-            graphics.begin_command_buffer(command_buffer, &shader.pipeline, i);
+        UnfinishedPattern::<D> {
+            shader,
+            models: Vec::new()
         }
-
-        UnfinishedPattern::<D> { shader, command_buffers }
     }
 
     pub fn uniform(&mut self) -> &mut D {
@@ -48,23 +74,30 @@ impl<D: ShaderData> Pattern<D> {
     }
 }
 
-impl<D: ShaderData> UnfinishedPattern<D> {
+impl<'a, D: ShaderData> UnfinishedPattern<D> {
+    pub fn add(&mut self, model: Model<D>) {
+        self.models.push(model);
+    }
+
     /// Wrap up the unfinished pattern. Consumes self.
     pub fn end(self, graphics: &Graphics) -> Pattern<D> {
-        for command_buffer in self.command_buffers.iter() {
-            graphics.end_command_buffer(*command_buffer);
+        let command_buffers = graphics.allocate_command_buffer();
+
+        for (i, &command_buffer) in command_buffers.iter().enumerate() {
+            graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
+
+            for model in &self.models {
+                model.render(graphics, &self.shader.pipeline_layout, &command_buffer, i);
+            }
+
+            graphics.end_command_buffer(command_buffer);
         }
 
         Pattern::<D> {
             shader: self.shader,
-            command_buffers: self.command_buffers,
-        }
-    }
-
-    /// Inside the pattern, render a model.
-    pub(crate) fn render(&self, graphics: &Graphics, model: &Model<D>) {
-        for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
-            model.render(graphics, &self.shader.pipeline_layout, &command_buffer, i);
+            models: self.models,
+            command_buffers,
+            swapchain_current_version: graphics.swapchain_current_version,
         }
     }
 }
@@ -86,7 +119,7 @@ impl Graphics {
         }
     }
 
-    /// Begin the ommand buffer. Panics if buffer cannot be started.
+    /// Begin the command buffer. Panics if buffer cannot be started.
     fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer, pipeline: &vk::Pipeline, buffer_index: usize) {
         let command_buffer_begin_info = vk::CommandBufferBeginInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
