@@ -3,12 +3,12 @@ use memoffset::offset_of;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct VertexV3 {
-    pub pos: [f32; 4],
-    pub color: [f32; 4],
+pub struct Vertex {
+    pub pos: [f32; 3],
+    pub normal: [f32; 3],
     pub tex_coord: [f32; 2],
 }
-impl VertexV3 {
+impl Vertex {
     pub fn get_binding_descriptions() -> [vk::VertexInputBindingDescription; 1] {
         [vk::VertexInputBindingDescription {
             binding: 0,
@@ -29,7 +29,7 @@ impl VertexV3 {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32B32A32_SFLOAT,
-                offset: offset_of!(Self, color) as u32,
+                offset: offset_of!(Self, normal) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,

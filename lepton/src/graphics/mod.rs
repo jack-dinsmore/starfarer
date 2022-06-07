@@ -1,6 +1,5 @@
 mod platforms;
 mod debug;
-mod tools;
 mod primitives;
 
 use ash::vk;
@@ -9,26 +8,29 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
-use crate::{Control, PatternTrait, constants::*, Unload};
-use crate::{model::Model, shader::Shader};
 pub use primitives::*;
-//use crate::vk_core::{share, structures::DeviceExtension};
+
+use crate::{Control, PatternTrait, constants::*};
 use debug::ValidationInfo;
+
+pub(crate) static mut DEVICE: Option<ash::Device> = None;
+
+/// Gets the device. Can only be used after the device's creation and before Graphics is dropped.
+pub(crate) fn get_device() -> &'static ash::Device { unsafe {match &DEVICE { Some(d) => d, None => panic!("Device was none")}}}
 
 pub struct Graphics {
     pub(crate) window: winit::window::Window,
 
     // vulkan stuff
-    pub(crate) entry: ash::Entry,
+    pub(crate) _entry: ash::Entry,
     pub(crate) instance: ash::Instance,
     pub(crate) surface_loader: ash::extensions::khr::Surface,
     pub(crate) surface: vk::SurfaceKHR,
-    pub(crate) debug_utils_loader: ash::extensions::ext::DebugUtils,
-    pub(crate) debug_messenger: vk::DebugUtilsMessengerEXT,
+    pub(crate) _debug_utils_loader: ash::extensions::ext::DebugUtils,
+    pub(crate) _debug_messenger: vk::DebugUtilsMessengerEXT,
 
     pub(crate) physical_device: vk::PhysicalDevice,
     pub(crate) memory_properties: vk::PhysicalDeviceMemoryProperties,
-    pub(crate) device: ash::Device,
 
     pub(crate) queue_family: QueueFamilyIndices,
     pub(crate) graphics_queue: vk::Queue,
@@ -92,50 +94,52 @@ impl DeviceExtension {
 /// Public functions
 impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
-    pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32) -> Self {
+    pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool) -> Self {
         let window = Graphics::init_window(&control.event_loop, window_title, window_width, window_height);
 
         // Create basic Vulkan stuff
         let entry = ash::Entry::linked();
         let instance = Graphics::create_instance(&entry, window_title, VALIDATION.is_enable, &VALIDATION.required_validation_layers.to_vec());
         let surface_stuff = Graphics::create_surface(&entry, &instance, &window, window_width, window_height);
-        let (debug_utils_loader, debug_messenger) = debug::setup_debug_utils(VALIDATION.is_enable, &entry, &instance);
+        let (_debug_utils_loader, _debug_messenger) = debug::setup_debug_utils(VALIDATION.is_enable, &entry, &instance);
         let physical_device = Graphics::pick_physical_device(&instance, &surface_stuff, &DEVICE_EXTENSIONS);
         let msaa_samples = Graphics::get_max_usable_sample_count(&instance, physical_device);
         let physical_device_memory_properties = unsafe { instance.get_physical_device_memory_properties(physical_device) };
         let (device, queue_family) = Graphics::create_logical_device(&instance, physical_device, &VALIDATION, &DEVICE_EXTENSIONS, &surface_stuff);
-        let graphics_queue = unsafe { device.get_device_queue(queue_family.graphics_family.unwrap(), 0) };
-        let present_queue = unsafe { device.get_device_queue(queue_family.present_family.unwrap(), 0) };
+        unsafe { DEVICE = Some(device); }
+        let graphics_queue = unsafe { get_device().get_device_queue(queue_family.graphics_family.unwrap(), 0) };
+        let present_queue = unsafe { get_device().get_device_queue(queue_family.present_family.unwrap(), 0) };
 
         // Create swapchain
-        let swapchain_stuff = Graphics::create_swapchain(&instance, &device, physical_device, &window, &surface_stuff, &queue_family);
-        let swapchain_imageviews = Graphics::create_image_views(&device, swapchain_stuff.swapchain_format, &swapchain_stuff.swapchain_images);
-        let render_pass = Graphics::create_render_pass(&instance, &device, physical_device, swapchain_stuff.swapchain_format, msaa_samples);
-        let command_pool = Graphics::create_command_pool(&device, &queue_family);
-        let descriptor_pool = Graphics::create_descriptor_pool(&device, swapchain_stuff.swapchain_images.len());
+        let swapchain_stuff = Graphics::create_swapchain(&instance, &get_device(), physical_device, &window, &surface_stuff, &queue_family);
+        let swapchain_imageviews = Graphics::create_image_views(&get_device(), swapchain_stuff.swapchain_format, &swapchain_stuff.swapchain_images);
+        let render_pass = Graphics::create_render_pass(&instance, &get_device(), physical_device, swapchain_stuff.swapchain_format, msaa_samples);
+        let command_pool = Graphics::create_command_pool(&get_device(), &queue_family);
+        let descriptor_pool = Graphics::create_descriptor_pool(&get_device(), swapchain_stuff.swapchain_images.len());
         let (color_image, color_image_view, color_image_memory) = Graphics::create_color_resources(
-                &device, swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
-        let (depth_image, depth_image_view, depth_image_memory) = Graphics::create_depth_resources(&instance, &device, physical_device,
+                &get_device(), swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
+        let (depth_image, depth_image_view, depth_image_memory) = Graphics::create_depth_resources(&instance, &get_device(), physical_device,
             command_pool, graphics_queue, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
         let framebuffers = Graphics::create_framebuffers(
-            &device, render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
-        let ubo_layout = crate::shader::create_descriptor_set_layout(&device);
-        let sync_objects = Graphics::create_sync_objects(&device, MAX_FRAMES_IN_FLIGHT);
+            &get_device(), render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
+        let ubo_layout = Graphics::create_descriptor_set_layout(&get_device());
+        let sync_objects = Graphics::create_sync_objects(&get_device(), MAX_FRAMES_IN_FLIGHT);
+
+        if center_cursor {
+            window.set_cursor_position(winit::dpi::PhysicalPosition{ x: window_width / 2, y: window_height / 2}).expect("Could not set cursor pos");
+            window.set_cursor_visible(false);
+        }
 
         Graphics {
             window,
-
-            entry,
+            _entry: entry,
             instance,
             surface: surface_stuff.surface,
             surface_loader: surface_stuff.surface_loader,
-            debug_utils_loader,
-            debug_messenger,
-
+            _debug_utils_loader,
+            _debug_messenger,
             physical_device,
             memory_properties: physical_device_memory_properties,
-            device,
-
             queue_family,
             graphics_queue,
             present_queue,
@@ -180,7 +184,7 @@ impl Graphics {
     /// Close the window and disable the Vulkan pipeline
     pub(crate) fn terminate(&self) {
         unsafe {
-            self.device
+            get_device()
                 .device_wait_idle()
                 .expect("Failed to wait device idle!")
         };
@@ -195,12 +199,12 @@ impl Graphics {
         let wait_fences = [self.in_flight_fences[self.current_frame]];
 
         unsafe {
-            self.device
+            get_device()
                 .wait_for_fences(&wait_fences, true, std::u64::MAX)
                 .expect("Failed to wait for Fence!");
         }
 
-        let (image_index, is_sub_optimal) = unsafe {
+        let (image_index, _) = unsafe {
             let result = self.swapchain_loader.acquire_next_image(
                 self.swapchain,
                 std::u64::MAX,
@@ -219,7 +223,7 @@ impl Graphics {
             }
         };
 
-        pattern.update_uniform_buffer(&self, image_index as usize);
+        pattern.update_uniform_buffer(image_index as usize);
 
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -238,11 +242,11 @@ impl Graphics {
         }];
 
         unsafe {
-            self.device
+            get_device()
                 .reset_fences(&wait_fences)
                 .expect("Failed to reset Fence!");
 
-            self.device
+            get_device()
                 .queue_submit(
                     self.graphics_queue,
                     &submit_infos,
@@ -424,6 +428,10 @@ impl Graphics {
         }
     
         (buffer, buffer_memory)
+    }
+
+    pub(crate) fn center_cursor(&self) {
+        self.window.set_cursor_position(winit::dpi::PhysicalPosition{ x: self.window_width / 2, y: self.window_height / 2}).expect("Could not set cursor pos)");
     }
 }
 
@@ -634,7 +642,7 @@ impl Graphics {
         let mut available_extension_names = vec![];
 
         for extension in available_extensions.iter() {
-            let extension_name = tools::vk_to_string(&extension.extension_name);
+            let extension_name = crate::tools::vk_to_string(&extension.extension_name);
 
             available_extension_names.push(extension_name);
         }
@@ -920,7 +928,7 @@ impl Graphics {
 
     fn recreate_swapchain(&mut self) {
         unsafe {
-            self.device.device_wait_idle().expect("Failed to wait device idle!")
+            get_device().device_wait_idle().expect("Failed to wait device idle!")
         };
         self.unload_self();
 
@@ -931,28 +939,28 @@ impl Graphics {
             screen_height: self.window_height,
         };
 
-        let swapchain_stuff = Graphics::create_swapchain(&self.instance, &self.device, self.physical_device, &self.window, &surface_suff, &self.queue_family);
+        let swapchain_stuff = Graphics::create_swapchain(&self.instance, &get_device(), self.physical_device, &self.window, &surface_suff, &self.queue_family);
         self.swapchain_loader = swapchain_stuff.swapchain_loader;
         self.swapchain = swapchain_stuff.swapchain;
         self.swapchain_images = swapchain_stuff.swapchain_images;
         self.swapchain_format = swapchain_stuff.swapchain_format;
         self.swapchain_extent = swapchain_stuff.swapchain_extent;
 
-        self.swapchain_imageviews = Graphics::create_image_views(&self.device, self.swapchain_format, &self.swapchain_images);
-        self.render_pass = Graphics::create_render_pass(&self.instance, &self.device, self.physical_device, self.swapchain_format, self.msaa_samples);
-        let color_resources = Graphics::create_color_resources(&self.device, self.swapchain_format,
+        self.swapchain_imageviews = Graphics::create_image_views(&get_device(), self.swapchain_format, &self.swapchain_images);
+        self.render_pass = Graphics::create_render_pass(&self.instance, &get_device(), self.physical_device, self.swapchain_format, self.msaa_samples);
+        let color_resources = Graphics::create_color_resources(&get_device(), self.swapchain_format,
             self.swapchain_extent, &self.memory_properties, self.msaa_samples);
         self.color_image = color_resources.0;
         self.color_image_view = color_resources.1;
         self.color_image_memory = color_resources.2;
 
-        let depth_resources = Graphics::create_depth_resources(&self.instance, &self.device, self.physical_device,
+        let depth_resources = Graphics::create_depth_resources(&self.instance, &get_device(), self.physical_device,
             self.command_pool, self.graphics_queue, self.swapchain_extent, &self.memory_properties, self.msaa_samples);
         self.depth_image = depth_resources.0;
         self.depth_image_view = depth_resources.1;
         self.depth_image_memory = depth_resources.2;
 
-        self.framebuffers = Graphics::create_framebuffers(&self.device, self.render_pass, &self.swapchain_imageviews,
+        self.framebuffers = Graphics::create_framebuffers(&get_device(), self.render_pass, &self.swapchain_imageviews,
             self.depth_image_view, self.color_image_view, self.swapchain_extent);
     }
 
@@ -1166,12 +1174,12 @@ impl Graphics {
             vk::DescriptorPoolSize {
                 // transform descriptor pool
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: swapchain_images_size as u32,
+                descriptor_count: 2 * swapchain_images_size as u32,
             },
             vk::DescriptorPoolSize {
                 // sampler descriptor pool
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: swapchain_images_size as u32,
+                descriptor_count: 2 * swapchain_images_size as u32,
             },
         ];
 
@@ -1179,7 +1187,7 @@ impl Graphics {
             s_type: vk::StructureType::DESCRIPTOR_POOL_CREATE_INFO,
             p_next: ptr::null(),
             flags: vk::DescriptorPoolCreateFlags::empty(),
-            max_sets: swapchain_images_size as u32,
+            max_sets: 2 * swapchain_images_size as u32,
             pool_size_count: pool_sizes.len() as u32,
             p_pool_sizes: pool_sizes.as_ptr(),
         };
@@ -1237,22 +1245,32 @@ impl Graphics {
 
     fn unload_self(&mut self) {
         unsafe {
-            self.device.destroy_image(self.depth_image, None);
-            self.device.destroy_image_view(self.depth_image_view, None);
-            self.device.free_memory(self.depth_image_memory, None);
+            get_device().destroy_image(self.depth_image, None);
+            get_device().destroy_image_view(self.depth_image_view, None);
+            get_device().free_memory(self.depth_image_memory, None);
 
-            self.device.destroy_image(self.color_image, None);
-            self.device.destroy_image_view(self.color_image_view, None);
-            self.device.free_memory(self.color_image_memory, None);
+            get_device().destroy_image(self.color_image, None);
+            get_device().destroy_image_view(self.color_image_view, None);
+            get_device().free_memory(self.color_image_memory, None);
 
             for &framebuffer in self.framebuffers.iter() {
-                self.device.destroy_framebuffer(framebuffer, None);
+                get_device().destroy_framebuffer(framebuffer, None);
             }
-            self.device.destroy_render_pass(self.render_pass, None);
+            get_device().destroy_render_pass(self.render_pass, None);
             for &image_view in self.swapchain_imageviews.iter() {
-                self.device.destroy_image_view(image_view, None);
+                get_device().destroy_image_view(image_view, None);
             }
             self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+        }
+    }
+}
+
+impl Drop for Graphics {
+    fn drop(&mut self) {
+        self.unload_self();
+
+        unsafe {
+            DEVICE = None;
         }
     }
 }

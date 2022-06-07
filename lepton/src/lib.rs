@@ -3,14 +3,13 @@ pub mod model;
 mod pattern;
 mod graphics;
 mod control;
+mod tools;
 mod fps_limiter;
 
 pub use pattern::*;
 pub use graphics::*;
 pub use control::*;
 pub use winit::event::VirtualKeyCode;
-
-use ash::vk;
 
 /// A module to contain all of the constants which are set within the crate.
 mod constants {
@@ -24,8 +23,5 @@ mod constants {
         ClearValue { color: ClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] } },
         ClearValue { depth_stencil: ClearDepthStencilValue { depth: 1.0, stencil: 0, } },
     ];
-}
-
-pub(crate) trait Unload {
-    fn unload(&mut self, device: &ash::Device); 
+    pub(crate) const PI: f64 = 3.141592653589793238462643383;
 }

@@ -7,10 +7,11 @@ use lepton::model::Model;
 use cgmath::{prelude::*, Vector3};
 
 const WINDOW_TITLE: &'static str = "Starfarer";
-const MODEL_PATH: &'static str = "assets/chalet.obj";
-const TEXTURE_PATH: &'static str = "assets/chalet.jpg";
+const MODEL_PATH: &'static str = "assets/endeavour/accessories/port.obj";//"assets/chalet.obj";
+const TEXTURE_PATH: &'static str = "assets/endeavour/accessories/port.png";//"assets/chalet.jpg";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
+const SENSITIVITY: f32 = 0.005;
 
 
 struct Starfarer {
@@ -21,11 +22,7 @@ struct Starfarer {
 
 impl Starfarer {
     fn new(graphics: &Graphics) -> Starfarer {
-
-        let mut pattern = Pattern::begin(graphics);
-        pattern.add(Model::new(graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH))
-            .expect("Model creation failed"));
-        let pattern = pattern.end(graphics);
+        let pattern = Self::load_patterns(graphics);
 
         let camera = Camera::new(graphics);
 
@@ -35,15 +32,23 @@ impl Starfarer {
             key_tracker: KeyTracker::new(),
         }
     }
+
+    fn load_patterns(graphics: &Graphics) -> Pattern<CameraData> {
+        let mut pattern = Pattern::begin(graphics);
+        let ship_model = Model::new(graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH))
+            .expect("Model creation failed");
+        pattern.add(ship_model.clone());
+        pattern.end(graphics)
+    }
 }
 
 impl Lepton for Starfarer {
     fn update(&mut self, delta_time: f32) {
         let mut camera_adjust = 
-              Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
-            - Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)
-            + Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::A) as u32) as f32)
-            - Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::D) as u32) as f32);
+            - Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
+            + Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)
+            - Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::A) as u32) as f32)
+            + Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::D) as u32) as f32);
         if camera_adjust.magnitude() > 0.0 {
             camera_adjust *= delta_time / camera_adjust.magnitude();
         }
@@ -67,6 +72,11 @@ impl Lepton for Starfarer {
         self.key_tracker.keyup(vk);
         false
     }
+
+    fn mouse_motion(&mut self, delta: (f64, f64)) -> bool {
+        self.camera.turn(-delta.1 as f32 * SENSITIVITY, -delta.0 as f32 * SENSITIVITY);
+        true
+    }
 }
 
 impl Drop for Starfarer {
@@ -77,7 +87,7 @@ impl Drop for Starfarer {
 
 fn main() {
     let control = Control::new();
-    let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT);
+    let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true);
     let starfarer = Starfarer::new(&mut graphics);
     control.run(graphics, starfarer, true);
 }

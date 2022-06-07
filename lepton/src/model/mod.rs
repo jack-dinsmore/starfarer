@@ -3,31 +3,32 @@ use ash::vk;
 use std::path::Path;
 use std::ptr;
 use std::cmp::max;
+use std::sync::Arc;
 
 mod primitives;
-pub use primitives::{VertexV3};
-use crate::{Graphics, Unload, UnfinishedPattern};
+pub use primitives::{Vertex};
+use crate::{Graphics, UnfinishedPattern};
 use crate::shader::{Shader, ShaderData};
 
 pub struct Model<D: ShaderData> {
     vertex_buffer: vk::Buffer,
-    index_buffer: vk::Buffer,
-    num_indices: u32,
     vertex_buffer_memory: vk::DeviceMemory,
+    index_buffer: vk::Buffer,
     index_buffer_memory: vk::DeviceMemory,
+    num_indices: u32,
 
-    mip_levels: u32,
     texture_image: vk::Image,
     texture_image_view: vk::ImageView,
-    texture_sampler: vk::Sampler,
     texture_image_memory: vk::DeviceMemory,
+    texture_sampler: vk::Sampler,
+    _mip_levels: u32,
+    
     descriptor_sets: Vec<vk::DescriptorSet>,
-
     phantom: std::marker::PhantomData<D>,
 }
 
 impl<D: ShaderData> Model<D> {
-    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern<D>, obj_path: &Path, texture_path: &Path) -> Result<Model<D>> {
+    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern<D>, obj_path: &Path, texture_path: &Path) -> Result<Arc<Model<D>>> {
         let (vertices, indices) = Self::get_data(obj_path)?;
 
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
@@ -41,12 +42,12 @@ impl<D: ShaderData> Model<D> {
             
         let model = Model::<D> {
             vertex_buffer,
-            index_buffer,
             vertex_buffer_memory,
+            index_buffer,
             index_buffer_memory,
             num_indices: indices.len() as u32,
 
-            mip_levels,
+            _mip_levels: mip_levels,
             texture_image,
             texture_image_view,
             texture_sampler,
@@ -56,25 +57,25 @@ impl<D: ShaderData> Model<D> {
             phantom: std::marker::PhantomData,
         };
 
-        Ok(model)
+        Ok(Arc::new(model))
     }
 
-    pub(crate) fn render(&self, graphics: &Graphics, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize) {
+    pub(crate) fn render(&self, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize) {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
         let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
 
         unsafe {
-            graphics.device.cmd_bind_vertex_buffers(*command_buffer, 0, &vertex_buffers, &offsets);
-            graphics.device.cmd_bind_index_buffer(*command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
-            graphics.device.cmd_bind_descriptor_sets(*command_buffer, vk::PipelineBindPoint::GRAPHICS,
+            crate::get_device().cmd_bind_vertex_buffers(*command_buffer, 0, &vertex_buffers, &offsets);
+            crate::get_device().cmd_bind_index_buffer(*command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
+            crate::get_device().cmd_bind_descriptor_sets(*command_buffer, vk::PipelineBindPoint::GRAPHICS,
                 *pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
 
-            graphics.device.cmd_draw_indexed(*command_buffer, self.num_indices, 1, 0, 0, 0);
+            crate::get_device().cmd_draw_indexed(*command_buffer, self.num_indices, 1, 0, 0, 0);
         }
     }
 
-    fn get_data(path: &Path) -> Result<(Vec<VertexV3>,Vec<u32>)> {
+    fn get_data(path: &Path) -> Result<(Vec<Vertex>, Vec<u32>)> {
         let model_obj = match tobj::load_obj(path, &tobj::LoadOptions{single_index: true, ..Default::default()}) {
             Ok(m) => m,
             Err(_) => bail!("Failed to load model object {}", path.display())
@@ -93,14 +94,17 @@ impl<D: ShaderData> Model<D> {
     
             let total_vertices_count = mesh.positions.len() / 3;
             for i in 0..total_vertices_count {
-                let vertex = VertexV3 {
+                let vertex = Vertex {
                     pos: [
                         mesh.positions[i * 3],
                         mesh.positions[i * 3 + 1],
                         mesh.positions[i * 3 + 2],
-                        1.0,
                     ],
-                    color: [1.0, 1.0, 1.0, 1.0],
+                    normal: [
+                        mesh.normals[i * 3],
+                        mesh.normals[i * 3 + 1],
+                        mesh.normals[i * 3 + 2],
+                    ],
                     tex_coord: [mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]],
                 };
                 vertices.push(vertex);
@@ -113,20 +117,22 @@ impl<D: ShaderData> Model<D> {
     }
 }
 
-impl<D: ShaderData> Unload for Model<D> {
-    fn unload(&mut self, device: &ash::Device) {
+impl<D: ShaderData> Drop for Model<D> {
+    fn drop(&mut self) {
         unsafe {
-            device.destroy_buffer(self.index_buffer, None);
-            device.free_memory(self.index_buffer_memory, None);
+            if let Some(device) = &crate::DEVICE {
+                device.destroy_buffer(self.vertex_buffer, None);
+                device.free_memory(self.vertex_buffer_memory, None);
 
-            device.destroy_buffer(self.vertex_buffer, None);
-            device.free_memory(self.vertex_buffer_memory, None);
+                device.destroy_buffer(self.index_buffer, None);
+                device.free_memory(self.index_buffer_memory, None);
 
-            device.destroy_sampler(self.texture_sampler, None);
-            device.destroy_image_view(self.texture_image_view, None);
-        
-            device.destroy_image(self.texture_image, None);
-            device.free_memory(self.texture_image_memory, None);
+                device.destroy_sampler(self.texture_sampler, None);
+                device.destroy_image_view(self.texture_image_view, None);
+            
+                device.destroy_image(self.texture_image, None);
+                device.free_memory(self.texture_image_memory, None);
+            }
         }
     }
 }
@@ -161,7 +167,7 @@ impl Graphics {
         }
 
         let (staging_buffer, staging_buffer_memory) = Graphics::create_buffer(
-            &self.device,
+            &crate::get_device(),
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -169,16 +175,16 @@ impl Graphics {
         );
 
         unsafe {
-            let data_ptr = self.device.map_memory(staging_buffer_memory, 0, image_size, vk::MemoryMapFlags::empty())
+            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, image_size, vk::MemoryMapFlags::empty())
                 .expect("Failed to Map Memory") as *mut u8;
 
             data_ptr.copy_from_nonoverlapping(image_data.as_ptr(), image_data.len());
 
-            self.device.unmap_memory(staging_buffer_memory);
+            crate::get_device().unmap_memory(staging_buffer_memory);
         }
 
         let (texture_image, texture_image_memory) = Graphics::create_image(
-            &self.device,
+            &crate::get_device(),
             image_width,
             image_height,
             mip_levels,
@@ -218,18 +224,18 @@ impl Graphics {
         );
 
         unsafe {
-            self.device.destroy_buffer(staging_buffer, None);
-            self.device.free_memory(staging_buffer_memory, None);
+            crate::get_device().destroy_buffer(staging_buffer, None);
+            crate::get_device().free_memory(staging_buffer_memory, None);
         }
 
         (texture_image, texture_image_memory, mip_levels)
     }
 
     fn create_texture_image_view(&self, texture_image: vk::Image, mip_levels: u32) -> vk::ImageView {
-        Self::create_image_view(&self.device, texture_image, vk::Format::R8G8B8A8_SRGB, vk::ImageAspectFlags::COLOR, mip_levels)
+        Self::create_image_view(&crate::get_device(), texture_image, vk::Format::R8G8B8A8_SRGB, vk::ImageAspectFlags::COLOR, mip_levels)
     }
 
-    fn create_texture_sampler(&self, mip_levels: u32) -> vk::Sampler {
+    fn create_texture_sampler(&self, _mip_levels: u32) -> vk::Sampler {
         let sampler_create_info = vk::SamplerCreateInfo {
             s_type: vk::StructureType::SAMPLER_CREATE_INFO,
             p_next: ptr::null(),
@@ -252,7 +258,7 @@ impl Graphics {
         };
     
         unsafe {
-            self.device
+            crate::get_device()
                 .create_sampler(&sampler_create_info, None)
                 .expect("Failed to create Sampler!")
         }
@@ -262,7 +268,7 @@ impl Graphics {
         let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
 
         let (staging_buffer, staging_buffer_memory) = Self::create_buffer(
-            &self.device,
+            &crate::get_device(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -270,16 +276,16 @@ impl Graphics {
         );
 
         unsafe {
-            let data_ptr = self.device.map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
+            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
                 .expect("Failed to Map Memory") as *mut T;
 
             data_ptr.copy_from_nonoverlapping(data.as_ptr(), data.len());
 
-            self.device.unmap_memory(staging_buffer_memory);
+            crate::get_device().unmap_memory(staging_buffer_memory);
         }
 
         let (vertex_buffer, vertex_buffer_memory) = Self::create_buffer(
-            &self.device,
+            &crate::get_device(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -289,8 +295,8 @@ impl Graphics {
         self.copy_buffer(&self.graphics_queue, staging_buffer, vertex_buffer, buffer_size);
 
         unsafe {
-            self.device.free_memory(staging_buffer_memory, None);
-            self.device.destroy_buffer(staging_buffer, None);
+            crate::get_device().free_memory(staging_buffer_memory, None);
+            crate::get_device().destroy_buffer(staging_buffer, None);
         }
 
         (vertex_buffer, vertex_buffer_memory)
@@ -299,20 +305,20 @@ impl Graphics {
     fn create_index_buffer(&self, data: &[u32]) -> (vk::Buffer, vk::DeviceMemory) {
         let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
 
-        let (staging_buffer, staging_buffer_memory) = Self::create_buffer(&self.device, buffer_size, vk::BufferUsageFlags::TRANSFER_SRC,
+        let (staging_buffer, staging_buffer_memory) = Self::create_buffer(&crate::get_device(), buffer_size, vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT, &self.memory_properties);
             
         unsafe {
-            let data_ptr = self.device.map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
+            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
                 .expect("Failed to Map Memory") as *mut u32;
 
             data_ptr.copy_from_nonoverlapping(data.as_ptr(), data.len());
 
-            self.device.unmap_memory(staging_buffer_memory);
+            crate::get_device().unmap_memory(staging_buffer_memory);
         }
         
         let (index_buffer, index_buffer_memory) = Self::create_buffer(
-            &self.device,
+            &crate::get_device(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -322,8 +328,8 @@ impl Graphics {
         self.copy_buffer(&self.graphics_queue, staging_buffer, index_buffer, buffer_size);
 
         unsafe {
-            self.device.destroy_buffer(staging_buffer, None);
-            self.device.free_memory(staging_buffer_memory, None);
+            crate::get_device().destroy_buffer(staging_buffer, None);
+            crate::get_device().free_memory(staging_buffer_memory, None);
         }
 
         (index_buffer, index_buffer_memory)
@@ -346,7 +352,7 @@ impl Graphics {
         };
     
         let descriptor_sets = unsafe {
-            self.device
+            crate::get_device()
                 .allocate_descriptor_sets(&descriptor_set_allocate_info)
                 .expect("Failed to allocate descriptor sets!")
         };
@@ -389,7 +395,7 @@ impl Graphics {
             ];
     
             unsafe {
-                self.device.update_descriptor_sets(&descriptor_write_sets, &[]);
+                crate::get_device().update_descriptor_sets(&descriptor_write_sets, &[]);
             }
         }
     
@@ -418,7 +424,7 @@ impl Graphics {
         }];
     
         unsafe {
-            self.device.cmd_copy_buffer_to_image(
+            crate::get_device().cmd_copy_buffer_to_image(
                 command_buffer,
                 buffer,
                 image,
@@ -484,7 +490,7 @@ impl Graphics {
         }];
 
         unsafe {
-            self.device.cmd_pipeline_barrier(
+            crate::get_device().cmd_pipeline_barrier(
                 command_buffer,
                 source_stage,
                 destination_stage,
@@ -531,7 +537,7 @@ impl Graphics {
             image_barrier.dst_access_mask = vk::AccessFlags::TRANSFER_READ;
     
             unsafe {
-                self.device.cmd_pipeline_barrier(
+                crate::get_device().cmd_pipeline_barrier(
                     command_buffer,
                     vk::PipelineStageFlags::TRANSFER,
                     vk::PipelineStageFlags::TRANSFER,
@@ -574,7 +580,7 @@ impl Graphics {
             }];
     
             unsafe {
-                self.device.cmd_blit_image(
+                crate::get_device().cmd_blit_image(
                     command_buffer,
                     image,
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -591,7 +597,7 @@ impl Graphics {
             image_barrier.dst_access_mask = vk::AccessFlags::SHADER_READ;
     
             unsafe {
-                self.device.cmd_pipeline_barrier(
+                crate::get_device().cmd_pipeline_barrier(
                     command_buffer,
                     vk::PipelineStageFlags::TRANSFER,
                     vk::PipelineStageFlags::FRAGMENT_SHADER,
@@ -613,7 +619,7 @@ impl Graphics {
         image_barrier.dst_access_mask = vk::AccessFlags::SHADER_READ;
     
         unsafe {
-            self.device.cmd_pipeline_barrier(
+            crate::get_device().cmd_pipeline_barrier(
                 command_buffer,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
@@ -637,7 +643,7 @@ impl Graphics {
         };
     
         let command_buffer = unsafe {
-            self.device
+            crate::get_device()
                 .allocate_command_buffers(&command_buffer_allocate_info)
                 .expect("Failed to allocate Command Buffers!")
         }[0];
@@ -650,7 +656,7 @@ impl Graphics {
         };
     
         unsafe {
-            self.device
+            crate::get_device()
                 .begin_command_buffer(command_buffer, &command_buffer_begin_info)
                 .expect("Failed to begin recording Command Buffer at beginning!");
         }
@@ -660,7 +666,7 @@ impl Graphics {
 
     fn end_single_time_command(&self, submit_queue: &vk::Queue, command_buffer: vk::CommandBuffer) {
         unsafe {
-            self.device
+            crate::get_device()
                 .end_command_buffer(command_buffer)
                 .expect("Failed to record Command Buffer at Ending!");
         }
@@ -680,13 +686,13 @@ impl Graphics {
         }];
     
         unsafe {
-            self.device
+            crate::get_device()
                 .queue_submit(*submit_queue, &sumbit_infos, vk::Fence::null())
                 .expect("Failed to Queue Submit!");
-            self.device
+            crate::get_device()
                 .queue_wait_idle(*submit_queue)
                 .expect("Failed to wait Queue idle!");
-            self.device.free_command_buffers(self.command_pool, &buffers_to_submit);
+            crate::get_device().free_command_buffers(self.command_pool, &buffers_to_submit);
         }
     }
 
@@ -701,7 +707,7 @@ impl Graphics {
         }];
     
         unsafe {
-            self.device.cmd_copy_buffer(command_buffer, src_buffer, dst_buffer, &copy_regions);
+            crate::get_device().cmd_copy_buffer(command_buffer, src_buffer, dst_buffer, &copy_regions);
         }
     
         self.end_single_time_command(submit_queue, command_buffer);

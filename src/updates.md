@@ -10,10 +10,18 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 
 ## May 31
 
-- Fullscreen & recreate swapchain. Also worked on some ship designs
+- Fullscreen & recreate swapchain. Also worked on some ship designs (Starling)
 - Designed a method to compute how good RCS placement is for custom-built ships.
 
-## Next:
+## June 5
+
+- Finished docking port texture
 - Camera steering with mouse pointer
-- Model locations (each must have their own uniform buffer)
-- Design a ship
+
+## June 7
+
+- Pattern reloading now that models have been stored as Arcs.
+- Normals & Phong shading
+
+## Next:
+- Rigid bodies

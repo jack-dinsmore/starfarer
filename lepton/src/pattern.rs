@@ -1,58 +1,58 @@
 use ash::vk;
 use std::ptr;
+use std::sync::Arc;
 
 use crate::constants::CLEAR_VALUES;
-use crate::{Graphics};
+use crate::Graphics;
 use crate::model::Model;
 use crate::shader::{Shader, ShaderData};
 
 pub trait PatternTrait {
-    fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize);
+    fn update_uniform_buffer(&self, image_index: usize);
     fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer;
     fn check_swapchain_version(&mut self, graphics: &Graphics);
 }
 
 pub struct Pattern<D: ShaderData> {
     shader: Shader<D>,
-    models: Vec<Model<D>>,
     command_buffers: Vec<vk::CommandBuffer>,
     swapchain_current_version: u32,
+    models: Vec<Arc<Model<D>>>,
 }
 
 pub struct UnfinishedPattern<D: ShaderData> {
     pub(crate) shader: Shader<D>,
-    models: Vec<Model<D>>,
+    models: Vec<Arc<Model<D>>>,
 }
 
 impl<D: ShaderData> PatternTrait for Pattern<D> {
-    fn update_uniform_buffer(&self, graphics: &Graphics, image_index: usize) {
-        self.shader.update_uniform_buffer(graphics, image_index);
+    fn update_uniform_buffer(&self, image_index: usize) {
+        self.shader.update_uniform_buffer(image_index);
     }
     fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer {
         &self.command_buffers[image_index]
     }
     fn check_swapchain_version(&mut self, graphics: &Graphics) {
         if graphics.swapchain_ideal_version != self.swapchain_current_version {
-            // Clean swapchain
-            unsafe {
-                graphics.device.free_command_buffers(graphics.command_pool, &self.command_buffers);
-            }
-            self.shader.destroy_pipeline(&graphics.device);
-            
-            // Recreate swapchain
+            // Unload command buffer
+            unsafe { crate::get_device().free_command_buffers(graphics.command_pool, &self.command_buffers); }
+
             self.shader.recreate_swapchain(graphics);
 
-            self.command_buffers = graphics.allocate_command_buffer();
-            for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
+            // Reload command buffer
+            let command_buffers = graphics.allocate_command_buffer();
+
+            for (i, &command_buffer) in command_buffers.iter().enumerate() {
                 graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
-    
+
                 for model in &self.models {
-                    model.render(graphics, &self.shader.pipeline_layout, &command_buffer, i);
+                    model.render(&self.shader.pipeline_layout, &command_buffer, i);
                 }
-    
+
                 graphics.end_command_buffer(command_buffer);
             }
 
+            self.command_buffers = command_buffers;
             self.swapchain_current_version = graphics.swapchain_ideal_version;
         }
     }
@@ -74,8 +74,8 @@ impl<D: ShaderData> Pattern<D> {
     }
 }
 
-impl<'a, D: ShaderData> UnfinishedPattern<D> {
-    pub fn add(&mut self, model: Model<D>) {
+impl<D: ShaderData> UnfinishedPattern<D> {
+    pub fn add(&mut self, model: Arc<Model<D>>) {
         self.models.push(model);
     }
 
@@ -87,7 +87,7 @@ impl<'a, D: ShaderData> UnfinishedPattern<D> {
             graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
 
             for model in &self.models {
-                model.render(graphics, &self.shader.pipeline_layout, &command_buffer, i);
+                model.render(&self.shader.pipeline_layout, &command_buffer, i);
             }
 
             graphics.end_command_buffer(command_buffer);
@@ -114,7 +114,7 @@ impl Graphics {
         };
 
         unsafe {
-            self.device.allocate_command_buffers(&command_buffer_allocate_info)
+            crate::get_device().allocate_command_buffers(&command_buffer_allocate_info)
                 .expect("Failed to allocate command buffers!")
         }
     }
@@ -129,7 +129,7 @@ impl Graphics {
         };
 
         unsafe {
-            self.device.begin_command_buffer(command_buffer, &command_buffer_begin_info)
+            crate::get_device().begin_command_buffer(command_buffer, &command_buffer_begin_info)
                 .expect("Failed to begin recording command buffer at beginning!");
         }
 
@@ -147,12 +147,12 @@ impl Graphics {
         };
 
         unsafe {
-            self.device.cmd_begin_render_pass(
+            crate::get_device().cmd_begin_render_pass(
                 command_buffer,
                 &render_pass_begin_info,
                 vk::SubpassContents::INLINE,
             );
-            self.device.cmd_bind_pipeline(
+            crate::get_device().cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
                 *pipeline,
@@ -163,8 +163,8 @@ impl Graphics {
     /// End the command buffer. Panics if buffer cannot be ended.
     fn end_command_buffer(&self, command_buffer: vk::CommandBuffer) {
         unsafe {
-            self.device.cmd_end_render_pass(command_buffer);
-            self.device.end_command_buffer(command_buffer)
+            crate::get_device().cmd_end_render_pass(command_buffer);
+            crate::get_device().end_command_buffer(command_buffer)
                 .expect("Failed to record command buffer at ending!");
         }
     }
