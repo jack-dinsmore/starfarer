@@ -1,7 +1,7 @@
 use winit::{event::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState},
     event_loop::{EventLoop, ControlFlow}};
-use crate::{Graphics, PatternTrait, fps_limiter::FPSLimiter};
+use crate::{Graphics, Lepton, fps_limiter::FPSLimiter};
 
 pub struct Control {
     pub(crate) event_loop: EventLoop<()>
@@ -70,7 +70,14 @@ impl Control {
                     let delta_time = tick_counter.delta_time();
 
                     lepton.update(delta_time);
-                    graphics.draw_frame(lepton.get_pattern());
+                    match graphics.begin_frame() {
+                        Some(data) => {
+                            lepton.render(&graphics, &data);
+                            graphics.end_frame(data);
+                            lepton.check_reload(&graphics);
+                        },
+                        None => ()
+                    };
                     
                     if print_fps {
                         print!("FPS: {}\r", tick_counter.fps());
@@ -123,22 +130,3 @@ impl KeyTracker {
         }
     }
 }
-
-/// A user-end trait which enables rendering and response to key presses
-pub trait Lepton: 'static {
-    /// Respond to a key press. Returns true if the program is to exit.
-    fn keydown(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
-
-    /// Respond to a key release. Returns true if the program is to exit.
-    fn keyup(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
-
-    /// Respond to mouse motion. True if the mouse pointer is to be reset to the center.
-    fn mouse_motion(&mut self, _delta: (f64, f64)) -> bool {false}
-
-    /// Determine which pattern to use for drawing
-    fn get_pattern(&mut self) -> &mut dyn PatternTrait;
-
-    /// Update all the objects
-    fn update(&mut self, delta_time: f32);
-}
-

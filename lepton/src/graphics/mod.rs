@@ -1,6 +1,7 @@
 mod platforms;
 mod debug;
 mod primitives;
+mod pattern;
 
 use ash::vk;
 use winit::event_loop::EventLoop;
@@ -9,8 +10,8 @@ use std::os::raw::{c_char, c_void};
 use std::ptr;
 
 pub use primitives::*;
-
-use crate::{Control, PatternTrait, constants::*};
+pub use pattern::*;
+use crate::{Control, constants::*, shader};
 use debug::ValidationInfo;
 
 pub(crate) static mut DEVICE: Option<ash::Device> = None;
@@ -66,6 +67,7 @@ pub struct Graphics {
     pub(crate) swapchain_ideal_version: u32,
     pub(crate) window_width: u32,
     pub(crate) window_height: u32,
+    input_types: Vec<shader::InputType>,
 }
 
 
@@ -73,7 +75,7 @@ const VALIDATION: ValidationInfo = ValidationInfo {
     is_enable: true,
     required_validation_layers: ["VK_LAYER_KHRONOS_validation"],
 };
-pub const DEVICE_EXTENSIONS: DeviceExtension = DeviceExtension {
+pub(crate) const DEVICE_EXTENSIONS: DeviceExtension = DeviceExtension {
     names: ["VK_KHR_swapchain"],
 };
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -94,7 +96,9 @@ impl DeviceExtension {
 /// Public functions
 impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
-    pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool) -> Self {
+    pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
+        input_types: Vec<shader::InputType>) -> Self {
+
         let window = Graphics::init_window(&control.event_loop, window_title, window_width, window_height);
 
         // Create basic Vulkan stuff
@@ -115,14 +119,14 @@ impl Graphics {
         let swapchain_imageviews = Graphics::create_image_views(&get_device(), swapchain_stuff.swapchain_format, &swapchain_stuff.swapchain_images);
         let render_pass = Graphics::create_render_pass(&instance, &get_device(), physical_device, swapchain_stuff.swapchain_format, msaa_samples);
         let command_pool = Graphics::create_command_pool(&get_device(), &queue_family);
-        let descriptor_pool = Graphics::create_descriptor_pool(&get_device(), swapchain_stuff.swapchain_images.len());
+        let descriptor_pool = Graphics::create_descriptor_pool(&get_device(), swapchain_stuff.swapchain_images.len(), input_types.len());
         let (color_image, color_image_view, color_image_memory) = Graphics::create_color_resources(
                 &get_device(), swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
         let (depth_image, depth_image_view, depth_image_memory) = Graphics::create_depth_resources(&instance, &get_device(), physical_device,
             command_pool, graphics_queue, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
         let framebuffers = Graphics::create_framebuffers(
             &get_device(), render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
-        let ubo_layout = Graphics::create_descriptor_set_layout(&get_device());
+        let ubo_layout = Graphics::create_descriptor_set_layout(&get_device(), &input_types, &physical_device_memory_properties, swapchain_imageviews.len());
         let sync_objects = Graphics::create_sync_objects(&get_device(), MAX_FRAMES_IN_FLIGHT);
 
         if center_cursor {
@@ -178,6 +182,7 @@ impl Graphics {
             swapchain_ideal_version: 0,
             window_width,
             window_height,
+            input_types,
         }
     }
 
@@ -195,7 +200,7 @@ impl Graphics {
         self.window.request_redraw();
     }
 
-    pub(crate) fn draw_frame(&mut self, pattern: &mut dyn PatternTrait) {
+    pub(crate) fn begin_frame(&mut self) -> Option<RenderData> {
         let wait_fences = [self.in_flight_fences[self.current_frame]];
 
         unsafe {
@@ -204,7 +209,7 @@ impl Graphics {
                 .expect("Failed to wait for Fence!");
         }
 
-        let (image_index, _) = unsafe {
+        let (buffer_index, _) = unsafe {
             let result = self.swapchain_loader.acquire_next_image(
                 self.swapchain,
                 std::u64::MAX,
@@ -212,59 +217,48 @@ impl Graphics {
                 vk::Fence::null(),
             );
             match result {
-                Ok(image_index) => image_index,
+                Ok(buffer_index) => buffer_index,
                 Err(vk_result) => match vk_result {
                     vk::Result::ERROR_OUT_OF_DATE_KHR => {
                         self.recreate_swapchain();
-                        return;
+                        return None;
                     }
                     _ => panic!("Failed to acquire Swap Chain Image!"),
                 },
             }
         };
 
-        pattern.update_uniform_buffer(image_index as usize);
+        // pattern.update_uniform_buffer(image_index as usize);
 
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
 
-        let submit_infos = [vk::SubmitInfo {
-            s_type: vk::StructureType::SUBMIT_INFO,
-            p_next: ptr::null(),
-            wait_semaphore_count: wait_semaphores.len() as u32,
-            p_wait_semaphores: wait_semaphores.as_ptr(),
-            p_wait_dst_stage_mask: wait_stages.as_ptr(),
-            command_buffer_count: 1,
-            p_command_buffers: pattern.get_command_buffer(image_index as usize),
-            signal_semaphore_count: signal_semaphores.len() as u32,
-            p_signal_semaphores: signal_semaphores.as_ptr(),
-        }];
-
         unsafe {
             get_device()
                 .reset_fences(&wait_fences)
                 .expect("Failed to reset Fence!");
-
-            get_device()
-                .queue_submit(
-                    self.graphics_queue,
-                    &submit_infos,
-                    self.in_flight_fences[self.current_frame],
-                )
-                .expect("Failed to execute queue submit.");
         }
-        
+
+        Some(RenderData {
+            wait_semaphores,
+            wait_stages,
+            signal_semaphores,
+            buffer_index: buffer_index as usize,
+        })
+    }
+
+    pub(crate) fn end_frame(&mut self, data: RenderData) {
         let swapchains = [self.swapchain];
 
         let present_info = vk::PresentInfoKHR {
             s_type: vk::StructureType::PRESENT_INFO_KHR,
             p_next: ptr::null(),
             wait_semaphore_count: 1,
-            p_wait_semaphores: signal_semaphores.as_ptr(),
+            p_wait_semaphores: data.signal_semaphores.as_ptr(),
             swapchain_count: 1,
             p_swapchains: swapchains.as_ptr(),
-            p_image_indices: &image_index,
+            p_image_indices: &(data.buffer_index as u32),
             p_results: ptr::null_mut(),
         };
 
@@ -285,7 +279,7 @@ impl Graphics {
             self.recreate_swapchain();
         }
         
-        pattern.check_swapchain_version(&self);
+        //pattern.check_swapchain_version(&self);
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
@@ -1169,17 +1163,19 @@ impl Graphics {
         framebuffers
     }
 
-    fn create_descriptor_pool(device: &ash::Device, swapchain_images_size: usize) -> vk::DescriptorPool {
+    fn create_descriptor_pool(device: &ash::Device, swapchain_images_size: usize, num_inputs: usize) -> vk::DescriptorPool {
+        let num_uniforms = num_inputs * swapchain_images_size;
+        let num_samplers = swapchain_images_size;
         let pool_sizes = [
             vk::DescriptorPoolSize {
                 // transform descriptor pool
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 2 * swapchain_images_size as u32,
+                descriptor_count: num_uniforms as u32,
             },
             vk::DescriptorPoolSize {
                 // sampler descriptor pool
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 2 * swapchain_images_size as u32,
+                descriptor_count: num_samplers as u32,
             },
         ];
 
@@ -1187,7 +1183,7 @@ impl Graphics {
             s_type: vk::StructureType::DESCRIPTOR_POOL_CREATE_INFO,
             p_next: ptr::null(),
             flags: vk::DescriptorPoolCreateFlags::empty(),
-            max_sets: 2 * swapchain_images_size as u32,
+            max_sets: (num_samplers + num_uniforms) as u32,
             pool_size_count: pool_sizes.len() as u32,
             p_pool_sizes: pool_sizes.as_ptr(),
         };
@@ -1196,6 +1192,45 @@ impl Graphics {
             device
                 .create_descriptor_pool(&descriptor_pool_create_info, None)
                 .expect("Failed to create Descriptor Pool!")
+        }
+    }
+
+    pub(crate) fn create_descriptor_set_layout(device: &ash::Device, input_types: &Vec<shader::InputType>,
+        memory_properties: &vk::PhysicalDeviceMemoryProperties, num_images: usize) -> vk::DescriptorSetLayout {
+
+        let mut ubo_layout_bindings = Vec::with_capacity(input_types.len() + 1);
+        for input_type in input_types {
+            ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+                // Shader uniform
+                binding: input_type.get_binding(),
+                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 1,
+                stage_flags: input_type.get_stages(),
+                p_immutable_samplers: ptr::null(),
+            });
+            input_type.make(memory_properties, num_images);
+        }
+        ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+            // Texture sampler
+            binding: 3,
+            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            p_immutable_samplers: ptr::null(),
+        });
+
+        let ubo_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
+            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            p_next: ptr::null(),
+            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+            binding_count: ubo_layout_bindings.len() as u32,
+            p_bindings: (&ubo_layout_bindings[..]).as_ptr(),
+        };
+
+        unsafe {
+            device
+                .create_descriptor_set_layout(&ubo_layout_create_info, None)
+                .expect("Failed to create descriptor set layout!")
         }
     }
 

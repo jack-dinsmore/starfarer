@@ -3,14 +3,14 @@ use ash::vk;
 use std::path::Path;
 use std::ptr;
 use std::cmp::max;
-use std::sync::Arc;
+use std::rc::Rc;
 
 mod primitives;
 pub use primitives::{Vertex};
 use crate::{Graphics, UnfinishedPattern};
-use crate::shader::{Shader, ShaderData};
+use crate::shader::{Shader};
 
-pub struct Model<D: ShaderData> {
+pub struct Model {
     vertex_buffer: vk::Buffer,
     vertex_buffer_memory: vk::DeviceMemory,
     index_buffer: vk::Buffer,
@@ -24,11 +24,10 @@ pub struct Model<D: ShaderData> {
     _mip_levels: u32,
     
     descriptor_sets: Vec<vk::DescriptorSet>,
-    phantom: std::marker::PhantomData<D>,
 }
 
-impl<D: ShaderData> Model<D> {
-    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern<D>, obj_path: &Path, texture_path: &Path) -> Result<Arc<Model<D>>> {
+impl Model {
+    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern, obj_path: &Path, texture_path: &Path) -> Result<Rc<Self>> {
         let (vertices, indices) = Self::get_data(obj_path)?;
 
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
@@ -40,7 +39,7 @@ impl<D: ShaderData> Model<D> {
 
         let descriptor_sets = graphics.create_descriptor_sets(&pattern.shader, texture_image_view, texture_sampler);
             
-        let model = Model::<D> {
+        let model = Model {
             vertex_buffer,
             vertex_buffer_memory,
             index_buffer,
@@ -54,10 +53,9 @@ impl<D: ShaderData> Model<D> {
             texture_image_memory,
 
             descriptor_sets,
-            phantom: std::marker::PhantomData,
         };
 
-        Ok(Arc::new(model))
+        Ok(Rc::new(model))
     }
 
     pub(crate) fn render(&self, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize) {
@@ -117,7 +115,7 @@ impl<D: ShaderData> Model<D> {
     }
 }
 
-impl<D: ShaderData> Drop for Model<D> {
+impl Drop for Model {
     fn drop(&mut self) {
         unsafe {
             if let Some(device) = &crate::DEVICE {
@@ -335,7 +333,7 @@ impl Graphics {
         (index_buffer, index_buffer_memory)
     }
 
-    fn create_descriptor_sets<D: ShaderData>(&self, shader: &Shader<D>, texture_image_view: vk::ImageView,
+    fn create_descriptor_sets(&self, shader: &Shader, texture_image_view: vk::ImageView,
         texture_sampler: vk::Sampler) -> Vec<vk::DescriptorSet> {
 
         let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];
@@ -362,29 +360,43 @@ impl Graphics {
             image_view: texture_image_view,
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         }];
-        let descriptor_buffer_infos = (0..descriptor_sets.len()).map(|i| shader.get_uniform_descriptor_buffer_info(i))
-            .collect::<Vec<Vec<vk::DescriptorBufferInfo>>>();
+
+
         for (i, &descritptor_set) in descriptor_sets.iter().enumerate() {
-            let descriptor_write_sets = [
-                vk::WriteDescriptorSet {
-                    // transform uniform
-                    s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
-                    p_next: ptr::null(),
-                    dst_set: descritptor_set,
-                    dst_binding: 0,
-                    dst_array_element: 0,
-                    descriptor_count: 1,
-                    descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                    p_image_info: ptr::null(),
-                    p_buffer_info: descriptor_buffer_infos[i].as_ptr(),
-                    p_texel_buffer_view: ptr::null(),
-                },
+            let mut descriptor_write_sets = Vec::with_capacity(shader.signature.inputs.len() + 1);
+            let mut descriptor_buffer_infos = Vec::with_capacity(shader.signature.inputs.len() + 1);
+            let mut locations = Vec::with_capacity(shader.signature.inputs.len() + 1);
+            
+            for input_type in shader.signature.inputs {
+                descriptor_buffer_infos.push((0..descriptor_sets.len()).map(|i| input_type.get_input().get_uniform_descriptor_buffer_info(i))
+                    .collect::<Vec<Vec<vk::DescriptorBufferInfo>>>());
+                locations.push(input_type.get_binding());
+            }
+
+            for j in 0..shader.signature.inputs.len() {
+                descriptor_write_sets.push(
+                    vk::WriteDescriptorSet {
+                        s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
+                        p_next: ptr::null(),
+                        dst_set: descritptor_set,
+                        dst_binding: locations[j],
+                        dst_array_element: 0,
+                        descriptor_count: 1,
+                        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                        p_image_info: ptr::null(),
+                        p_buffer_info: descriptor_buffer_infos[j][i].as_ptr(),
+                        p_texel_buffer_view: ptr::null(),
+                    }
+                )
+            }
+
+            descriptor_write_sets.push(                
                 vk::WriteDescriptorSet {
                     // sampler uniform
                     s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
                     p_next: ptr::null(),
                     dst_set: descritptor_set,
-                    dst_binding: 1,
+                    dst_binding: 3,
                     dst_array_element: 0,
                     descriptor_count: 1,
                     descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -392,7 +404,7 @@ impl Graphics {
                     p_buffer_info: ptr::null(),
                     p_texel_buffer_view: ptr::null(),
                 },
-            ];
+            );
     
             unsafe {
                 crate::get_device().update_descriptor_sets(&descriptor_write_sets, &[]);

@@ -1,44 +1,60 @@
 use std::path::Path;
 
-use lepton::{Graphics, Control, Lepton, Pattern, PatternTrait, shader::Camera};
-use lepton::shader::CameraData;
-use lepton::{VirtualKeyCode, KeyTracker};
-use lepton::model::Model;
-use cgmath::{prelude::*, Vector3};
+use lepton::prelude::*;
+use cgmath::{prelude::*, Vector3, Quaternion};
 
 const WINDOW_TITLE: &'static str = "Starfarer";
 const MODEL_PATH: &'static str = "assets/endeavour/accessories/port.obj";//"assets/chalet.obj";
 const TEXTURE_PATH: &'static str = "assets/endeavour/accessories/port.png";//"assets/chalet.jpg";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
-const SENSITIVITY: f32 = 0.005;
+const SENSITIVITY: f32 = 0.003;
 
 
 struct Starfarer {
-    pattern: Pattern<CameraData>,
+    pattern: Pattern,
     camera: Camera,
+    lights: Lights,
     key_tracker: KeyTracker,
+    physics: Physics,
+    docking_port: Object,
+    sun: Object,
 }
 
 impl Starfarer {
-    fn new(graphics: &Graphics) -> Starfarer {
-        let pattern = Self::load_patterns(graphics);
-
-        let camera = Camera::new(graphics);
-
-        Starfarer {
-            pattern,
-            camera,
-            key_tracker: KeyTracker::new(),
-        }
-    }
-
-    fn load_patterns(graphics: &Graphics) -> Pattern<CameraData> {
-        let mut pattern = Pattern::begin(graphics);
+    fn new(graphics: &mut Graphics) -> Self {
+        let mut pattern = Pattern::begin(graphics, &builtin::TEXTURE_SHADER);
         let ship_model = Model::new(graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH))
             .expect("Model creation failed");
         pattern.add(ship_model.clone());
-        pattern.end(graphics)
+        let pattern = pattern.end(graphics);
+
+        let camera = Camera::new(graphics);
+        let physics = Physics::new();
+        let mut lights = Lights::new();
+        let docking_port = Object::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Quaternion::new(1.0, 0.0, 0.0, 0.0),
+        );
+        let mut sun = Object::new(
+            Vector3::new(5.0, -5.0, 10.0),
+            Quaternion::new(1.0, 0.0, 0.0, 0.0),
+        );
+        lights.illuminate(&mut sun, shader::LightFeatures {
+            diffuse_coeff: 1.0,
+            specular_coeff: 1.0,
+            shininess: 1
+        });
+
+        Self {
+            pattern,
+            camera,
+            lights,
+            key_tracker: KeyTracker::new(),
+            physics,
+            docking_port,
+            sun,
+        }
     }
 }
 
@@ -53,11 +69,17 @@ impl Lepton for Starfarer {
             camera_adjust *= delta_time / camera_adjust.magnitude();
         }
         self.camera.adjust(camera_adjust);
-        self.camera.update(self.pattern.uniform());
     }
+    
+    fn render(&mut self, graphics: &Graphics, render_data: &RenderData) {
+        // Update inputs
+        self.docking_port.update_light(&mut self.lights, None);
+        self.camera.update_input(render_data.buffer_index);
+        self.lights.update_input(render_data.buffer_index);
 
-    fn get_pattern(&mut self) -> &mut dyn PatternTrait {
-        &mut self.pattern
+        // Actually render
+        self.docking_port.update_input(render_data.buffer_index);
+        self.pattern.render(graphics, render_data);
     }
     
     fn keydown(&mut self, vk: VirtualKeyCode) -> bool {
@@ -77,6 +99,15 @@ impl Lepton for Starfarer {
         self.camera.turn(-delta.1 as f32 * SENSITIVITY, -delta.0 as f32 * SENSITIVITY);
         true
     }
+
+    fn write_ui(&self, ) {
+        
+    }
+
+    fn check_reload(&mut self, graphics: &Graphics) {
+        //// Ideally, this would be moved inside a pattern call.
+        self.pattern.check_reload(graphics);
+    }
 }
 
 impl Drop for Starfarer {
@@ -87,7 +118,10 @@ impl Drop for Starfarer {
 
 fn main() {
     let control = Control::new();
-    let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true);
+    let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true,
+        vec![shader::InputType::Object, shader::InputType::Camera, shader::InputType::Lights], );
+    
     let starfarer = Starfarer::new(&mut graphics);
+    
     control.run(graphics, starfarer, true);
 }

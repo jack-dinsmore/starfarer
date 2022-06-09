@@ -5,15 +5,14 @@
 
 #define NUM_LIGHTS 2
 
-layout (binding = 0) uniform CameraData {
+layout (binding = 0) uniform ObjectData {
     mat4 model;
+} object_ubo;
+layout (binding = 1) uniform CameraData {
     mat4 view;
     mat4 proj;
     vec4 camera_pos;
-    vec4 light_pos[NUM_LIGHTS];
-    vec4 light_features[NUM_LIGHTS];
-    uint num_lights;
-} ubo;
+} camera_ubo;
 
 layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
@@ -28,8 +27,8 @@ out gl_PerVertex {
 };
 
 void main() {
-    worldCoord = (ubo.model * vec4(inPosition, 1.0)).xyz; // Assumes that the model matrix does no scaling
-    gl_Position = ubo.proj * ubo.view * vec4(worldCoord, 1.0);
+    worldCoord = (object_ubo.model * vec4(inPosition, 1.0)).xyz; // Assumes that the model matrix does no scaling
+    gl_Position = camera_ubo.proj * camera_ubo.view * vec4(worldCoord, 1.0);
     fragNormal = inNormal;
     fragTexCoord = inTexCoord;
 }

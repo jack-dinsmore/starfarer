@@ -1,46 +1,38 @@
 use ash::vk;
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
 use crate::model::Model;
-use crate::shader::{Shader, ShaderData};
+use crate::shader::{Shader, Signature};
+use crate::RenderData;
 
-pub trait PatternTrait {
-    fn update_uniform_buffer(&self, image_index: usize);
-    fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer;
-    fn check_swapchain_version(&mut self, graphics: &Graphics);
-}
-
-pub struct Pattern<D: ShaderData> {
-    shader: Shader<D>,
+pub struct Pattern {
     command_buffers: Vec<vk::CommandBuffer>,
     swapchain_current_version: u32,
-    models: Vec<Arc<Model<D>>>,
+    models: Vec<Rc<Model>>,
+    shader: Shader,
 }
 
-pub struct UnfinishedPattern<D: ShaderData> {
-    pub(crate) shader: Shader<D>,
-    models: Vec<Arc<Model<D>>>,
+pub struct UnfinishedPattern {
+    models: Vec<Rc<Model>>,
+    pub(crate) shader: Shader,
 }
 
-impl<D: ShaderData> PatternTrait for Pattern<D> {
-    fn update_uniform_buffer(&self, image_index: usize) {
-        self.shader.update_uniform_buffer(image_index);
-    }
-    fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer {
+impl Pattern {
+    pub(crate) fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer {
         &self.command_buffers[image_index]
     }
-    fn check_swapchain_version(&mut self, graphics: &Graphics) {
+
+    pub fn check_reload(&mut self, graphics: &Graphics) {
         if graphics.swapchain_ideal_version != self.swapchain_current_version {
             // Unload command buffer
             unsafe { crate::get_device().free_command_buffers(graphics.command_pool, &self.command_buffers); }
 
-            self.shader.recreate_swapchain(graphics);
-
             // Reload command buffer
             let command_buffers = graphics.allocate_command_buffer();
+            self.shader.reload(graphics);
 
             for (i, &command_buffer) in command_buffers.iter().enumerate() {
                 graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
@@ -56,31 +48,49 @@ impl<D: ShaderData> PatternTrait for Pattern<D> {
             self.swapchain_current_version = graphics.swapchain_ideal_version;
         }
     }
-}
 
-impl<D: ShaderData> Pattern<D> {
     /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
-    pub fn begin(graphics: &Graphics) -> UnfinishedPattern<D> {
-        let shader = Shader::new(graphics);
+    pub fn begin(graphics: &mut Graphics, signature: &'static Signature) -> UnfinishedPattern {
+        let shader = Shader::new(graphics, signature);
 
-        UnfinishedPattern::<D> {
+        UnfinishedPattern {
             shader,
             models: Vec::new()
         }
     }
 
-    pub fn uniform(&mut self) -> &mut D {
-        &mut self.shader.uniform
+    pub fn render(&self, graphics: &Graphics, render_data: &RenderData) {
+        let submit_infos = [vk::SubmitInfo {
+            s_type: vk::StructureType::SUBMIT_INFO,
+            p_next: ptr::null(),
+            wait_semaphore_count: render_data.wait_semaphores.len() as u32,
+            p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
+            p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
+            command_buffer_count: 1,
+            p_command_buffers: self.get_command_buffer(render_data.buffer_index),
+            signal_semaphore_count: render_data.signal_semaphores.len() as u32,
+            p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
+        }];
+
+        unsafe {
+            crate::get_device()
+                .queue_submit(
+                    graphics.graphics_queue,
+                    &submit_infos,
+                    graphics.in_flight_fences[graphics.current_frame],
+                )
+                .expect("Failed to execute queue submit.");
+        }
     }
 }
 
-impl<D: ShaderData> UnfinishedPattern<D> {
-    pub fn add(&mut self, model: Arc<Model<D>>) {
+impl UnfinishedPattern {
+    pub fn add(&mut self, model: Rc<Model>) {
         self.models.push(model);
     }
 
     /// Wrap up the unfinished pattern. Consumes self.
-    pub fn end(self, graphics: &Graphics) -> Pattern<D> {
+    pub fn end(self, graphics: &Graphics) -> Pattern {
         let command_buffers = graphics.allocate_command_buffer();
 
         for (i, &command_buffer) in command_buffers.iter().enumerate() {
@@ -93,7 +103,7 @@ impl<D: ShaderData> UnfinishedPattern<D> {
             graphics.end_command_buffer(command_buffer);
         }
 
-        Pattern::<D> {
+        Pattern {
             shader: self.shader,
             models: self.models,
             command_buffers,

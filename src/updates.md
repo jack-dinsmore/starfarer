@@ -20,8 +20,20 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 
 ## June 7
 
-- Pattern reloading now that models have been stored as Arcs.
+- Pattern reloading now that models have been stored as Rcs.
 - Normals & Phong shading
 
+## June 8
+
+- Shader revamping
+
+## June 9
+
+- Made Object class
+- Made lepton prelude
+- Revamped shaders
+
 ## Next:
+- Make a UI & implement double-buffered texture sharing as in https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan
+- Show FPS on UI
 - Rigid bodies

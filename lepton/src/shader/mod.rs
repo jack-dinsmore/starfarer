@@ -1,33 +1,63 @@
 mod camera;
+mod input;
+mod lights;
+mod object;
+pub mod builtin;
 
 use ash::vk;
 use std::ptr;
 use std::ffi::CString;
+use std::ops::BitOr;
 
-use crate::Graphics;
 pub use camera::*;
+pub use lights::*;
+pub use object::*;
+pub use input::{Input, InputType};
+use crate::Graphics;
 
-/// A new trait for data that can be used as a uniform
-pub trait ShaderData: Clone + Copy + Sync + Send + 'static {
-    const VERTEX_CODE: &'static [u32];
-    const FRAGMENT_CODE: &'static [u32];
-
-    fn default() -> Self;
+pub struct ShaderStages {
+    f: u32,
 }
 
-/// A struct that contains the shader information for uniform struct `D`.
-pub struct Shader<D: ShaderData> {
-    pub(crate) uniform: D,
-    uniform_buffers: Vec<vk::Buffer>,
-    uniform_buffers_memory: Vec<vk::DeviceMemory>,
+impl ShaderStages {
+    // Must agree with vk::ShaderStageFlags
+    pub const VERTEX: Self = Self{ f: 0b1 };
+    pub const FRAGMENT: Self = Self{ f: 0b1_0000 };
+    // pub const TESSELLATION_CONTROL: u32 = Self{ f: 0b10 };
+    // pub const TESSELLATION_EVALUATION: u32 = Self{ f: 0b100 };
+    // pub const GEOMETRY: u32 = Self{ f: 0b1000 };
+    // pub const COMPUTE: u32 = Self{ f: 0b10_0000 };
+    // pub const ALL_GRAPHICS: u32 = Self{ f: 0x0000_001F };
+    // pub const ALL: u32 = Self{ f: 0x7FFF_FFFF };
+
+    const fn and(self, rhs: Self) -> Self {
+        Self{ f: self.f | rhs.f}
+    }
+}
+
+
+
+pub trait Data: Clone + Copy + Send + Sync + 'static {
+    const BINDING: u32;
+    const STAGES: ShaderStages;
+}
+
+pub struct Signature {
+    pub vertex_code: &'static [u32],
+    pub fragment_code: &'static [u32],
+    pub inputs: &'static [InputType],
+}
+
+pub struct Shader {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) pipeline_layout: vk::PipelineLayout,
+    pub(crate) signature: &'static Signature,
 }
 
-impl<D: ShaderData> Shader<D> {
-    pub fn new(graphics: &Graphics) -> Shader<D> {
-        let vert_shader_module = graphics.create_shader_module(D::VERTEX_CODE.to_vec());
-        let frag_shader_module = graphics.create_shader_module(D::FRAGMENT_CODE.to_vec());
+impl Shader {
+    pub fn new(graphics: &mut Graphics, signature: &'static Signature) -> Self {
+        let vert_shader_module = graphics.create_shader_module(signature.vertex_code.to_vec());
+        let frag_shader_module = graphics.create_shader_module(signature.fragment_code.to_vec());
 
         let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
 
@@ -54,7 +84,6 @@ impl<D: ShaderData> Shader<D> {
             },
         ];
 
-        let (uniform_buffers, uniform_buffers_memory) = graphics.create_uniform_buffers::<D>();
         let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline(&shader_stages);
 
         unsafe {
@@ -62,43 +91,18 @@ impl<D: ShaderData> Shader<D> {
             crate::get_device().destroy_shader_module(frag_shader_module, None);
         }
 
-        Shader {
-            uniform: D::default(),
-            uniform_buffers,
-            uniform_buffers_memory,
+        Self {
             pipeline,
             pipeline_layout,
+            signature,
         }
     }
 
-    /// Update the pattern uniform buffer
-    pub(crate) fn update_uniform_buffer(&self, image_index: usize) {
-        let ubos = [self.uniform.clone()];
-
-        let buffer_size = (std::mem::size_of::<D>() * ubos.len()) as u64;
-
-        unsafe {
-            let data_ptr =crate::get_device().map_memory(self.uniform_buffers_memory[image_index],
-                0, buffer_size, vk::MemoryMapFlags::empty())
-                    .expect("Failed to Map Memory") as *mut D;
-
-            data_ptr.copy_from_nonoverlapping(ubos.as_ptr(), ubos.len());
-
-            crate::get_device().unmap_memory(self.uniform_buffers_memory[image_index]);
-        }
-    }
-
-    pub(crate) fn get_uniform_descriptor_buffer_info(&self, buffer_index: usize) -> Vec<vk::DescriptorBufferInfo> {
-        vec![vk::DescriptorBufferInfo {
-            buffer: self.uniform_buffers[buffer_index],
-            offset: 0,
-            range: ::std::mem::size_of::<D>() as u64,
-        }]
-    }
-
-    pub(crate) fn recreate_swapchain(&mut self, graphics: &Graphics) {
-        let vert_shader_module = graphics.create_shader_module(D::VERTEX_CODE.to_vec());
-        let frag_shader_module = graphics.create_shader_module(D::FRAGMENT_CODE.to_vec());
+    pub(crate) fn reload(&mut self, graphics: &Graphics) {
+        //let vert_shader_module = graphics.create_shader_module(S::vertex_code.to_vec());
+        //let frag_shader_module = graphics.create_shader_module(S::fragment_code.to_vec());
+        let vert_shader_module = graphics.create_shader_module(self.signature.vertex_code.to_vec());
+        let frag_shader_module = graphics.create_shader_module(self.signature.fragment_code.to_vec());
 
         let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
 
@@ -139,14 +143,10 @@ impl<D: ShaderData> Shader<D> {
     }
 }
 
-impl<D: ShaderData> Drop for Shader<D> {
+impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
             if let Some(device) = &crate::DEVICE {
-                for (uniform_buffer, uniform_buffer_memory) in self.uniform_buffers.iter().zip(self.uniform_buffers_memory.iter()) {
-                    device.destroy_buffer(*uniform_buffer, None);
-                    device.free_memory(*uniform_buffer_memory, None);
-                }
                 device.destroy_pipeline_layout(self.pipeline_layout, None);
                 device.destroy_pipeline(self.pipeline, None);
             }
@@ -155,42 +155,6 @@ impl<D: ShaderData> Drop for Shader<D> {
 }
 
 impl Graphics {
-    /// Define the descriptor set layout which is used for all shaders.
-    pub(crate) fn create_descriptor_set_layout(device: &ash::Device) -> vk::DescriptorSetLayout {
-        let ubo_layout_bindings = [
-            vk::DescriptorSetLayoutBinding {
-                // Shader uniform
-                binding: 0,
-                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 1,
-                stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                p_immutable_samplers: ptr::null(),
-            },
-            vk::DescriptorSetLayoutBinding {
-                // Texture sampler
-                binding: 1,
-                descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 1,
-                stage_flags: vk::ShaderStageFlags::FRAGMENT,
-                p_immutable_samplers: ptr::null(),
-            },
-        ];
-
-        let ubo_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            binding_count: ubo_layout_bindings.len() as u32,
-            p_bindings: ubo_layout_bindings.as_ptr(),
-        };
-
-        unsafe {
-            device
-                .create_descriptor_set_layout(&ubo_layout_create_info, None)
-                .expect("Failed to create descriptor set layout!")
-        }
-    }
-
     fn create_shader_module(&self, code: Vec<u32>) -> vk::ShaderModule {
         let shader_module_create_info = vk::ShaderModuleCreateInfo {
             s_type: vk::StructureType::SHADER_MODULE_CREATE_INFO,
@@ -205,27 +169,6 @@ impl Graphics {
                 .create_shader_module(&shader_module_create_info, None)
                 .expect("Failed to create shader module!")
         }
-    }
-
-    fn create_uniform_buffers<T>(&self) -> (Vec<vk::Buffer>, Vec<vk::DeviceMemory>) {
-        let buffer_size = ::std::mem::size_of::<T>();
-    
-        let mut uniform_buffers = vec![];
-        let mut uniform_buffers_memory = vec![];
-    
-        for _ in 0..self.swapchain_images.len() {
-            let (uniform_buffer, uniform_buffer_memory) = Graphics::create_buffer(
-                &crate::get_device(),
-                buffer_size as u64,
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                &self.memory_properties,
-            );
-            uniform_buffers.push(uniform_buffer);
-            uniform_buffers_memory.push(uniform_buffer_memory);
-        }
-    
-        (uniform_buffers, uniform_buffers_memory)
     }
 
     fn create_graphics_pipeline(&self, shader_stages: &[vk::PipelineShaderStageCreateInfo]) -> (vk::Pipeline, vk::PipelineLayout) {

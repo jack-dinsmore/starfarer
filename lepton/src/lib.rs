@@ -1,12 +1,12 @@
 pub mod shader;
 pub mod model;
-mod pattern;
+pub mod physics;
+pub mod ui;
 mod graphics;
 mod control;
 mod tools;
 mod fps_limiter;
 
-pub use pattern::*;
 pub use graphics::*;
 pub use control::*;
 pub use winit::event::VirtualKeyCode;
@@ -25,3 +25,35 @@ mod constants {
     ];
     pub(crate) const PI: f64 = 3.141592653589793238462643383;
 }
+
+pub mod prelude {
+    pub use crate::{Lepton, Graphics, Control, Pattern, KeyTracker, VirtualKeyCode, RenderData,
+        physics::Physics,
+        model::Model,
+        shader::{self, Camera, Lights, Object, builtin},
+    };
+}
+
+/// A user-end trait which enables rendering and response to key presses
+pub trait Lepton: 'static {
+    /// Respond to a key press. Returns true if the program is to exit.
+    fn keydown(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
+
+    /// Respond to a key release. Returns true if the program is to exit.
+    fn keyup(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
+
+    /// Respond to mouse motion. True if the mouse pointer is to be reset to the center.
+    fn mouse_motion(&mut self, _delta: (f64, f64)) -> bool {false}
+
+    /// Execute all the patterns
+    fn render(&mut self, graphics: &Graphics, render_data: &RenderData);
+
+    /// Update all the objects
+    fn update(&mut self, delta_time: f32) {}
+
+    /// Write to the UI model
+    fn write_ui(&self);
+
+    fn check_reload(&mut self, graphics: &Graphics);
+}
+
