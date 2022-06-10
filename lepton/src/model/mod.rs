@@ -5,10 +5,10 @@ use std::ptr;
 use std::cmp::max;
 use std::rc::Rc;
 
-mod primitives;
-pub use primitives::{Vertex};
+pub mod primitives;
+use primitives::*;
 use crate::{Graphics, UnfinishedPattern};
-use crate::shader::{Shader};
+use crate::shader::{Shader, Signature};
 
 pub struct Model {
     vertex_buffer: vk::Buffer,
@@ -26,16 +26,45 @@ pub struct Model {
     descriptor_sets: Vec<vk::DescriptorSet>,
 }
 
-impl Model {
-    pub fn new(graphics: &Graphics, pattern: &UnfinishedPattern, obj_path: &Path, texture_path: &Path) -> Result<Rc<Self>> {
-        let (vertices, indices) = Self::get_data(obj_path)?;
+pub enum VertexType<'a> {
+    SpecifiedModel(Vec<VertexModel>, Vec<u32>),
+    Specified3Tex(Vec<Vertex3Tex>, Vec<u32>),
+    Specified2Tex(Vec<Vertex2Tex>, Vec<u32>),
+    Path(&'a Path),
+}
 
+pub enum TextureType<'a> {
+    Blank,
+    Path(&'a Path),
+}
+
+// Constructors
+impl Model {
+    pub fn new<'a, S: Signature>(graphics: &Graphics, pattern: &UnfinishedPattern<S>, vertex_input: VertexType<'a>, texture_input: TextureType<'a>) -> Result<Rc<Self>> {
+        
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
-        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image(texture_path);
+        let (texture_image, texture_image_memory, mip_levels) = match texture_input {
+            TextureType::Path(p) => graphics.create_texture_image_from_path(p),
+            TextureType::Blank => graphics.create_texture_image_from_path(&Path::new("assets/endeavour/accessories/port.png")),
+        };
         let texture_image_view = graphics.create_texture_image_view(texture_image, mip_levels);
         let texture_sampler = graphics.create_texture_sampler(mip_levels);
-        let (vertex_buffer, vertex_buffer_memory) = graphics.create_vertex_buffer(&vertices);
-        let (index_buffer, index_buffer_memory) = graphics.create_index_buffer(&indices);
+
+        let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_input {
+            VertexType::SpecifiedModel(v, i) => {
+                (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
+            },
+            VertexType::Specified3Tex(v, i) => {
+                (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
+            },
+            VertexType::Specified2Tex(v, i) => {
+                (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
+            },
+            VertexType::Path(p) => {
+                let (vertices, indices) = Self::get_data_from_model(p)?;
+                (graphics.create_vertex_buffer(&vertices), graphics.create_index_buffer(&indices), indices.len() as u32)
+            },
+        };
 
         let descriptor_sets = graphics.create_descriptor_sets(&pattern.shader, texture_image_view, texture_sampler);
             
@@ -44,7 +73,7 @@ impl Model {
             vertex_buffer_memory,
             index_buffer,
             index_buffer_memory,
-            num_indices: indices.len() as u32,
+            num_indices,
 
             _mip_levels: mip_levels,
             texture_image,
@@ -57,7 +86,9 @@ impl Model {
 
         Ok(Rc::new(model))
     }
+}
 
+impl Model {
     pub(crate) fn render(&self, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize) {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
@@ -73,7 +104,7 @@ impl Model {
         }
     }
 
-    fn get_data(path: &Path) -> Result<(Vec<Vertex>, Vec<u32>)> {
+    fn get_data_from_model(path: &Path) -> Result<(Vec<VertexModel>, Vec<u32>)> {
         let model_obj = match tobj::load_obj(path, &tobj::LoadOptions{single_index: true, ..Default::default()}) {
             Ok(m) => m,
             Err(_) => bail!("Failed to load model object {}", path.display())
@@ -92,7 +123,7 @@ impl Model {
     
             let total_vertices_count = mesh.positions.len() / 3;
             for i in 0..total_vertices_count {
-                let vertex = Vertex {
+                let vertex = VertexModel {
                     pos: [
                         mesh.positions[i * 3],
                         mesh.positions[i * 3 + 1],
@@ -148,7 +179,7 @@ impl Graphics {
         }
     }
 
-    fn create_texture_image(&self, texture_path: &Path) -> (vk::Image, vk::DeviceMemory, u32) {
+    fn create_texture_image_from_path(&self, texture_path: &Path) -> (vk::Image, vk::DeviceMemory, u32) {
         let mut image_object = image::open(texture_path).unwrap(); // this function is slow in debug mode.
         image_object = image_object.flipv();
         let (image_width, image_height) = (image_object.width(), image_object.height());
@@ -333,12 +364,12 @@ impl Graphics {
         (index_buffer, index_buffer_memory)
     }
 
-    fn create_descriptor_sets(&self, shader: &Shader, texture_image_view: vk::ImageView,
+    fn create_descriptor_sets<S: Signature>(&self, shader: &Shader<S>, texture_image_view: vk::ImageView,
         texture_sampler: vk::Sampler) -> Vec<vk::DescriptorSet> {
 
         let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];
         for _ in 0..self.swapchain_images.len() {
-            layouts.push(self.ubo_layout);
+            layouts.push(shader.ubo_layout);
         }
     
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo {
@@ -363,17 +394,17 @@ impl Graphics {
 
 
         for (i, &descritptor_set) in descriptor_sets.iter().enumerate() {
-            let mut descriptor_write_sets = Vec::with_capacity(shader.signature.inputs.len() + 1);
-            let mut descriptor_buffer_infos = Vec::with_capacity(shader.signature.inputs.len() + 1);
-            let mut locations = Vec::with_capacity(shader.signature.inputs.len() + 1);
+            let mut descriptor_write_sets = Vec::with_capacity(S::INPUTS.len() + 1);
+            let mut descriptor_buffer_infos = Vec::with_capacity(S::INPUTS.len() + 1);
+            let mut locations = Vec::with_capacity(S::INPUTS.len() + 1);
             
-            for input_type in shader.signature.inputs {
+            for input_type in S::INPUTS {
                 descriptor_buffer_infos.push((0..descriptor_sets.len()).map(|i| input_type.get_input().get_uniform_descriptor_buffer_info(i))
                     .collect::<Vec<Vec<vk::DescriptorBufferInfo>>>());
                 locations.push(input_type.get_binding());
             }
 
-            for j in 0..shader.signature.inputs.len() {
+            for j in 0..S::INPUTS.len() {
                 descriptor_write_sets.push(
                     vk::WriteDescriptorSet {
                         s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,

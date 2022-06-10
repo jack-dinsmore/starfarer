@@ -7,13 +7,14 @@ pub mod builtin;
 use ash::vk;
 use std::ptr;
 use std::ffi::CString;
-use std::ops::BitOr;
+use std::marker::PhantomData;
 
 pub use camera::*;
 pub use lights::*;
 pub use object::*;
 pub use input::{Input, InputType};
 use crate::Graphics;
+use crate::model::primitives::Vertex;
 
 pub struct ShaderStages {
     f: u32,
@@ -42,22 +43,30 @@ pub trait Data: Clone + Copy + Send + Sync + 'static {
     const STAGES: ShaderStages;
 }
 
-pub struct Signature {
-    pub vertex_code: &'static [u32],
-    pub fragment_code: &'static [u32],
-    pub inputs: &'static [InputType],
+// pub struct Signature {
+//     pub VERTEX_CODE: &'static [u32],
+//     pub FRAGMENT_CODE: &'static [u32],
+//     pub inputs: &'static [InputType],
+// }
+
+pub trait Signature {
+    type V: Vertex;
+    const VERTEX_CODE: &'static [u32];
+    const FRAGMENT_CODE: &'static [u32];
+    const INPUTS: &'static [InputType];
 }
 
-pub struct Shader {
+pub struct Shader<S: Signature> {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) pipeline_layout: vk::PipelineLayout,
-    pub(crate) signature: &'static Signature,
+    pub(crate) ubo_layout: vk::DescriptorSetLayout,
+    phantom: PhantomData<S>,
 }
 
-impl Shader {
-    pub fn new(graphics: &mut Graphics, signature: &'static Signature) -> Self {
-        let vert_shader_module = graphics.create_shader_module(signature.vertex_code.to_vec());
-        let frag_shader_module = graphics.create_shader_module(signature.fragment_code.to_vec());
+impl<S: Signature> Shader<S> {
+    pub fn new(graphics: &mut Graphics) -> Self {
+        let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
+        let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
 
         let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
 
@@ -84,7 +93,9 @@ impl Shader {
             },
         ];
 
-        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline(&shader_stages);
+        let ubo_layout = Graphics::create_ubo_layout(S::INPUTS, &graphics.memory_properties, graphics.swapchain_imageviews.len());
+
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, ubo_layout);
 
         unsafe {
             crate::get_device().destroy_shader_module(vert_shader_module, None);
@@ -94,15 +105,16 @@ impl Shader {
         Self {
             pipeline,
             pipeline_layout,
-            signature,
+            ubo_layout,
+            phantom: PhantomData,
         }
     }
 
     pub(crate) fn reload(&mut self, graphics: &Graphics) {
-        //let vert_shader_module = graphics.create_shader_module(S::vertex_code.to_vec());
-        //let frag_shader_module = graphics.create_shader_module(S::fragment_code.to_vec());
-        let vert_shader_module = graphics.create_shader_module(self.signature.vertex_code.to_vec());
-        let frag_shader_module = graphics.create_shader_module(self.signature.fragment_code.to_vec());
+        //let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
+        //let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
+        let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
+        let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
 
         let main_function_name = CString::new("main").unwrap(); // the beginning function name in shader code.
 
@@ -129,7 +141,7 @@ impl Shader {
             },
         ];
 
-        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline(&shader_stages);
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, self.ubo_layout);
 
         unsafe {
             crate::get_device().destroy_shader_module(frag_shader_module, None);
@@ -143,7 +155,7 @@ impl Shader {
     }
 }
 
-impl Drop for Shader {
+impl<S: Signature> Drop for Shader<S> {
     fn drop(&mut self) {
         unsafe {
             if let Some(device) = &crate::DEVICE {
@@ -171,9 +183,11 @@ impl Graphics {
         }
     }
 
-    fn create_graphics_pipeline(&self, shader_stages: &[vk::PipelineShaderStageCreateInfo]) -> (vk::Pipeline, vk::PipelineLayout) {
-        let binding_description = crate::model::Vertex::get_binding_descriptions();
-        let attribute_description = crate::model::Vertex::get_attribute_descriptions();
+    fn create_graphics_pipeline<S: Signature>(&self, shader_stages: &[vk::PipelineShaderStageCreateInfo],
+        ubo_layout: vk::DescriptorSetLayout) -> (vk::Pipeline, vk::PipelineLayout) {
+
+        let binding_description = S::V::get_binding_descriptions();
+        let attribute_description = S::V::get_attribute_descriptions();
 
         let vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -291,7 +305,7 @@ impl Graphics {
             blend_constants: [0.0, 0.0, 0.0, 0.0],
         };
 
-        let set_layouts = [self.ubo_layout];
+        let set_layouts = [ubo_layout];
 
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo {
             s_type: vk::StructureType::PIPELINE_LAYOUT_CREATE_INFO,
@@ -342,5 +356,43 @@ impl Graphics {
         };
 
         (graphics_pipelines[0], pipeline_layout)
+    }
+
+
+    fn create_ubo_layout(input_types: &'static [InputType], memory_properties: &vk::PhysicalDeviceMemoryProperties, num_images: usize) -> vk::DescriptorSetLayout {
+        let mut ubo_layout_bindings = Vec::with_capacity(input_types.len() + 1);
+        for input_type in input_types {
+            ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+                // Shader uniform
+                binding: input_type.get_binding(),
+                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 1,
+                stage_flags: input_type.get_stages(),
+                p_immutable_samplers: ptr::null(),
+            });
+            input_type.make(memory_properties, num_images);
+        }
+        ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+            // Texture sampler
+            binding: 3,
+            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            p_immutable_samplers: ptr::null(),
+        });
+
+        let ubo_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
+            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            p_next: ptr::null(),
+            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+            binding_count: ubo_layout_bindings.len() as u32,
+            p_bindings: (&ubo_layout_bindings[..]).as_ptr(),
+        };
+
+        unsafe {
+            crate::get_device()
+                .create_descriptor_set_layout(&ubo_layout_create_info, None)
+                .expect("Failed to create descriptor set layout!")
+        }
     }
 }

@@ -12,9 +12,10 @@ const SENSITIVITY: f32 = 0.003;
 
 
 struct Starfarer {
-    pattern: Pattern,
+    pattern: Pattern::<builtin::TextureShader>,
     camera: Camera,
     lights: Lights,
+    ui: UserInterface,
     key_tracker: KeyTracker,
     physics: Physics,
     docking_port: Object,
@@ -23,10 +24,10 @@ struct Starfarer {
 
 impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
-        let mut pattern = Pattern::begin(graphics, &builtin::TEXTURE_SHADER);
-        let ship_model = Model::new(graphics, &pattern, &Path::new(MODEL_PATH), &Path::new(TEXTURE_PATH))
+        let mut pattern = Pattern::<builtin::TextureShader>::begin(graphics);
+        let ship_model = Model::new(graphics, &pattern, VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Path(&Path::new(TEXTURE_PATH)))
             .expect("Model creation failed");
-        pattern.add(ship_model.clone());
+        pattern.add(ship_model);
         let pattern = pattern.end(graphics);
 
         let camera = Camera::new(graphics);
@@ -45,11 +46,13 @@ impl Starfarer {
             specular_coeff: 1.0,
             shininess: 1
         });
+        let ui = UserInterface::new(graphics);
 
         Self {
             pattern,
             camera,
             lights,
+            ui,
             key_tracker: KeyTracker::new(),
             physics,
             docking_port,
@@ -69,9 +72,12 @@ impl Lepton for Starfarer {
             camera_adjust *= delta_time / camera_adjust.magnitude();
         }
         self.camera.adjust(camera_adjust);
+
+        // User interface
+
     }
     
-    fn render(&mut self, graphics: &Graphics, render_data: &RenderData) {
+    fn render(&mut self, render_data: &mut RenderData) {
         // Update inputs
         self.docking_port.update_light(&mut self.lights, None);
         self.camera.update_input(render_data.buffer_index);
@@ -79,7 +85,9 @@ impl Lepton for Starfarer {
 
         // Actually render
         self.docking_port.update_input(render_data.buffer_index);
-        self.pattern.render(graphics, render_data);
+        self.pattern.render(render_data);
+
+        //self.ui.render(render_data);
     }
     
     fn keydown(&mut self, vk: VirtualKeyCode) -> bool {
@@ -100,13 +108,10 @@ impl Lepton for Starfarer {
         true
     }
 
-    fn write_ui(&self, ) {
-        
-    }
-
     fn check_reload(&mut self, graphics: &Graphics) {
         //// Ideally, this would be moved inside a pattern call.
         self.pattern.check_reload(graphics);
+        self.ui.check_reload(graphics);
     }
 }
 
@@ -119,7 +124,7 @@ impl Drop for Starfarer {
 fn main() {
     let control = Control::new();
     let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true,
-        vec![shader::InputType::Object, shader::InputType::Camera, shader::InputType::Lights], );
+        vec![shader::InputType::Object, shader::InputType::Camera, shader::InputType::Lights], 2);
     
     let starfarer = Starfarer::new(&mut graphics);
     

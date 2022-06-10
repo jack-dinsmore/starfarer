@@ -8,23 +8,19 @@ use crate::model::Model;
 use crate::shader::{Shader, Signature};
 use crate::RenderData;
 
-pub struct Pattern {
+pub struct Pattern<S: Signature> {
     command_buffers: Vec<vk::CommandBuffer>,
     swapchain_current_version: u32,
     models: Vec<Rc<Model>>,
-    shader: Shader,
+    shader: Shader<S>,
 }
 
-pub struct UnfinishedPattern {
+pub struct UnfinishedPattern<S: Signature> {
     models: Vec<Rc<Model>>,
-    pub(crate) shader: Shader,
+    pub(crate) shader: Shader<S>,
 }
 
-impl Pattern {
-    pub(crate) fn get_command_buffer(&self, image_index: usize) -> &vk::CommandBuffer {
-        &self.command_buffers[image_index]
-    }
-
+impl<S: Signature> Pattern<S> {
     pub fn check_reload(&mut self, graphics: &Graphics) {
         if graphics.swapchain_ideal_version != self.swapchain_current_version {
             // Unload command buffer
@@ -50,47 +46,51 @@ impl Pattern {
     }
 
     /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
-    pub fn begin(graphics: &mut Graphics, signature: &'static Signature) -> UnfinishedPattern {
-        let shader = Shader::new(graphics, signature);
+    pub fn begin(graphics: &mut Graphics) -> UnfinishedPattern<S> {
+        let shader = Shader::<S>::new(graphics);
 
-        UnfinishedPattern {
+        UnfinishedPattern::<S> {
             shader,
-            models: Vec::new()
+            models: Vec::new(),
         }
     }
 
-    pub fn render(&self, graphics: &Graphics, render_data: &RenderData) {
-        let submit_infos = [vk::SubmitInfo {
-            s_type: vk::StructureType::SUBMIT_INFO,
-            p_next: ptr::null(),
-            wait_semaphore_count: render_data.wait_semaphores.len() as u32,
-            p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
-            p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
-            command_buffer_count: 1,
-            p_command_buffers: self.get_command_buffer(render_data.buffer_index),
-            signal_semaphore_count: render_data.signal_semaphores.len() as u32,
-            p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
-        }];
-
-        unsafe {
-            crate::get_device()
-                .queue_submit(
-                    graphics.graphics_queue,
-                    &submit_infos,
-                    graphics.in_flight_fences[graphics.current_frame],
-                )
-                .expect("Failed to execute queue submit.");
+    pub fn render(&self, render_data: &mut RenderData) {
+        if render_data.submit_infos.len() == 0 {
+            render_data.submit_infos.push(vk::SubmitInfo {
+                s_type: vk::StructureType::SUBMIT_INFO,
+                p_next: ptr::null(),
+                wait_semaphore_count: render_data.wait_semaphores.len() as u32,
+                p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
+                p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
+                command_buffer_count: 1,
+                p_command_buffers: &self.command_buffers[render_data.buffer_index],
+                signal_semaphore_count: 0,
+                p_signal_semaphores: ptr::null(),
+            });
+        } else {
+            render_data.submit_infos.push(vk::SubmitInfo {
+                s_type: vk::StructureType::SUBMIT_INFO,
+                p_next: ptr::null(),
+                wait_semaphore_count: 0,
+                p_wait_semaphores: ptr::null(),
+                p_wait_dst_stage_mask: ptr::null(),
+                command_buffer_count: 1,
+                p_command_buffers: &self.command_buffers[render_data.buffer_index],
+                signal_semaphore_count: render_data.signal_semaphores.len() as u32,
+                p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
+            });
         }
     }
 }
 
-impl UnfinishedPattern {
+impl<S: Signature> UnfinishedPattern<S> {
     pub fn add(&mut self, model: Rc<Model>) {
         self.models.push(model);
     }
 
     /// Wrap up the unfinished pattern. Consumes self.
-    pub fn end(self, graphics: &Graphics) -> Pattern {
+    pub fn end(self, graphics: &Graphics) -> Pattern<S> {
         let command_buffers = graphics.allocate_command_buffer();
 
         for (i, &command_buffer) in command_buffers.iter().enumerate() {
@@ -137,7 +137,6 @@ impl Graphics {
             p_inheritance_info: ptr::null(),
             flags: vk::CommandBufferUsageFlags::SIMULTANEOUS_USE,
         };
-
         unsafe {
             crate::get_device().begin_command_buffer(command_buffer, &command_buffer_begin_info)
                 .expect("Failed to begin recording command buffer at beginning!");
@@ -157,12 +156,12 @@ impl Graphics {
         };
 
         unsafe {
-            crate::get_device().cmd_begin_render_pass(
-                command_buffer,
-                &render_pass_begin_info,
-                vk::SubpassContents::INLINE,
-            );
-            crate::get_device().cmd_bind_pipeline(
+                crate::get_device().cmd_begin_render_pass(
+                    command_buffer,
+                    &render_pass_begin_info,
+                    vk::SubpassContents::INLINE,
+                );
+                crate::get_device().cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
                 *pipeline,

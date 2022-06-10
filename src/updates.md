@@ -33,7 +33,13 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 - Made lepton prelude
 - Revamped shaders
 
+## June 10
+
+- Made progress on UI
+
 ## Next:
+- Push constants for object matrix
+- Allow multiple shaders for one pattern
 - Make a UI & implement double-buffered texture sharing as in https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan
 - Show FPS on UI
 - Rigid bodies

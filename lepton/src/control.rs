@@ -71,8 +71,8 @@ impl Control {
 
                     lepton.update(delta_time);
                     match graphics.begin_frame() {
-                        Some(data) => {
-                            lepton.render(&graphics, &data);
+                        Some(mut data) => {
+                            lepton.render(&mut data);
                             graphics.end_frame(data);
                             lepton.check_reload(&graphics);
                         },

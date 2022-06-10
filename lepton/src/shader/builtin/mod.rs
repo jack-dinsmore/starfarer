@@ -1,19 +1,21 @@
 use cgmath::{Matrix4, Vector4};
 use vk_shader_macros::include_glsl;
 
-use crate::shader;
+use crate::{shader, model};
 
 pub const NUM_LIGHTS: usize = 2;
 
-pub const TEXTURE_SHADER: shader::Signature = shader::Signature {
-    vertex_code: include_glsl!("src/shader/builtin/tex.vert", kind: vert),
-    fragment_code: include_glsl!("src/shader/builtin/tex.frag", kind: frag),
-    inputs: &[
+pub struct TextureShader;
+impl shader::Signature for TextureShader {
+    type V = model::primitives::VertexModel;
+    const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.vert", kind: vert);
+    const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.frag", kind: frag);
+    const INPUTS: &'static [shader::InputType] = &[
         shader::InputType::Object,
         shader::InputType::Camera,
         shader::InputType::Lights,
-    ],
-};
+    ];
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
