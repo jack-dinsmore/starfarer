@@ -4,11 +4,16 @@ use std::path::Path;
 use std::ptr;
 use std::cmp::max;
 use std::rc::Rc;
+use cgmath::Matrix4;
 
 pub mod primitives;
 use primitives::*;
 use crate::{Graphics, UnfinishedPattern};
-use crate::shader::{Shader, Signature};
+use crate::shader::{Shader, Signature, PushConstants};
+
+pub static mut TEST_PUSH_CONSTANTS: PushConstants = PushConstants {
+    model: Matrix4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+};
 
 pub struct Model {
     vertex_buffer: vk::Buffer,
@@ -24,6 +29,8 @@ pub struct Model {
     _mip_levels: u32,
     
     descriptor_sets: Vec<vk::DescriptorSet>,
+
+    pub push_constant_bytes: &'static [u8],
 }
 
 pub enum VertexType<'a> {
@@ -41,6 +48,13 @@ pub enum TextureType<'a> {
 // Constructors
 impl Model {
     pub fn new<'a, S: Signature>(graphics: &Graphics, pattern: &UnfinishedPattern<S>, vertex_input: VertexType<'a>, texture_input: TextureType<'a>) -> Result<Rc<Self>> {
+
+        let push_constant_bytes = unsafe {
+            std::slice::from_raw_parts(
+                (&TEST_PUSH_CONSTANTS as *const PushConstants) as *const u8,
+                std::mem::size_of::<PushConstants>(),
+            )
+        };
         
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (texture_image, texture_image_memory, mip_levels) = match texture_input {
@@ -82,6 +96,7 @@ impl Model {
             texture_image_memory,
 
             descriptor_sets,
+            push_constant_bytes,
         };
 
         Ok(Rc::new(model))
@@ -99,6 +114,8 @@ impl Model {
             crate::get_device().cmd_bind_index_buffer(*command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
             crate::get_device().cmd_bind_descriptor_sets(*command_buffer, vk::PipelineBindPoint::GRAPHICS,
                 *pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
+            crate::get_device().cmd_push_constants(*command_buffer, *pipeline_layout,
+                vk::ShaderStageFlags::VERTEX, 0, self.push_constant_bytes);
 
             crate::get_device().cmd_draw_indexed(*command_buffer, self.num_indices, 1, 0, 0, 0);
         }

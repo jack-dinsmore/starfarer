@@ -7,6 +7,7 @@ pub struct Object {
     pub pos: Vector3<f64>,
     pub orientation: Quaternion<f64>,
     pub(crate) light_index: Option<usize>,
+    pub(crate) push_constants: shader::PushConstants
 }
 
 impl Object {
@@ -15,16 +16,17 @@ impl Object {
             pos,
             orientation,
             light_index: None,
+            push_constants: shader::PushConstants {
+                model: Matrix4::from_scale(1.0),
+            }
         }
     }
 
-    pub fn update_input(&mut self, buffer_index: usize) {
+    pub fn update_input(&mut self) {
         //// Add orientation matrix. Also maybe don't compute data every frame
-        let data = shader::builtin::ObjectData {
+        let data = shader::PushConstants {
             model: Matrix4::from_translation(self.pos.cast().unwrap()),
         };
-
-        shader::InputType::Object.get_input().update(data, buffer_index);
     }
 
     pub fn update_light(&self, lights: &mut shader::Lights, features: Option<shader::LightFeatures>) {

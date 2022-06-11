@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use lepton::prelude::*;
-use cgmath::{prelude::*, Vector3, Quaternion};
+use cgmath::{prelude::*, Vector3, Quaternion, Matrix4};
 
 const WINDOW_TITLE: &'static str = "Starfarer";
 const MODEL_PATH: &'static str = "assets/endeavour/accessories/port.obj";//"assets/chalet.obj";
@@ -20,6 +20,7 @@ struct Starfarer {
     physics: Physics,
     docking_port: Object,
     sun: Object,
+    pos: Vector3<f32>,
 }
 
 impl Starfarer {
@@ -57,6 +58,7 @@ impl Starfarer {
             physics,
             docking_port,
             sun,
+            pos: Vector3::new(0.0, -1.0, 0.0),
         }
     }
 }
@@ -72,9 +74,12 @@ impl Lepton for Starfarer {
             camera_adjust *= delta_time / camera_adjust.magnitude();
         }
         self.camera.adjust(camera_adjust);
+        self.pos.y += 0.01;
 
         // User interface
-
+        unsafe {
+            lepton::model::TEST_PUSH_CONSTANTS.model = Matrix4::from_translation(self.pos);
+        }
     }
     
     fn render(&mut self, render_data: &mut RenderData) {
@@ -82,9 +87,9 @@ impl Lepton for Starfarer {
         self.docking_port.update_light(&mut self.lights, None);
         self.camera.update_input(render_data.buffer_index);
         self.lights.update_input(render_data.buffer_index);
+        self.docking_port.update_input();
 
         // Actually render
-        self.docking_port.update_input(render_data.buffer_index);
         self.pattern.render(render_data);
 
         //self.ui.render(render_data);
@@ -124,7 +129,7 @@ impl Drop for Starfarer {
 fn main() {
     let control = Control::new();
     let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true,
-        vec![shader::InputType::Object, shader::InputType::Camera, shader::InputType::Lights], 2);
+        vec![shader::InputType::Camera, shader::InputType::Lights], 2);
     
     let starfarer = Starfarer::new(&mut graphics);
     

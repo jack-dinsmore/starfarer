@@ -13,8 +13,10 @@ pub use camera::*;
 pub use lights::*;
 pub use object::*;
 pub use input::{Input, InputType};
+pub(crate) use input::{PushConstants};
 use crate::Graphics;
 use crate::model::primitives::Vertex;
+use crate::shader;
 
 pub struct ShaderStages {
     f: u32,
@@ -307,14 +309,20 @@ impl Graphics {
 
         let set_layouts = [ubo_layout];
 
+        let push_constant_range = [vk::PushConstantRange {
+            offset: 0,
+            size: std::mem::size_of::<shader::PushConstants>() as u32,
+            stage_flags: vk::ShaderStageFlags::VERTEX,
+        }];
+
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo {
             s_type: vk::StructureType::PIPELINE_LAYOUT_CREATE_INFO,
             p_next: ptr::null(),
             flags: vk::PipelineLayoutCreateFlags::empty(),
             set_layout_count: set_layouts.len() as u32,
             p_set_layouts: set_layouts.as_ptr(),
-            push_constant_range_count: 0,
-            p_push_constant_ranges: ptr::null(),
+            push_constant_range_count: 1,
+            p_push_constant_ranges: push_constant_range.as_ptr(),
         };
 
         let pipeline_layout = unsafe {

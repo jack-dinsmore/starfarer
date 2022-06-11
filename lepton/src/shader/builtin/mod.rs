@@ -11,20 +11,9 @@ impl shader::Signature for TextureShader {
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.frag", kind: frag);
     const INPUTS: &'static [shader::InputType] = &[
-        shader::InputType::Object,
         shader::InputType::Camera,
         shader::InputType::Lights,
     ];
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct ObjectData {
-    pub model: Matrix4<f32>,
-}
-impl shader::Data for ObjectData {
-    const BINDING: u32 = 0;
-    const STAGES: shader::ShaderStages = shader::ShaderStages::VERTEX;
 }
 
 #[repr(C)]

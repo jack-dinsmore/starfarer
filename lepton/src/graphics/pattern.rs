@@ -56,31 +56,18 @@ impl<S: Signature> Pattern<S> {
     }
 
     pub fn render(&self, render_data: &mut RenderData) {
-        if render_data.submit_infos.len() == 0 {
-            render_data.submit_infos.push(vk::SubmitInfo {
-                s_type: vk::StructureType::SUBMIT_INFO,
-                p_next: ptr::null(),
-                wait_semaphore_count: render_data.wait_semaphores.len() as u32,
-                p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
-                p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
-                command_buffer_count: 1,
-                p_command_buffers: &self.command_buffers[render_data.buffer_index],
-                signal_semaphore_count: 0,
-                p_signal_semaphores: ptr::null(),
-            });
-        } else {
-            render_data.submit_infos.push(vk::SubmitInfo {
-                s_type: vk::StructureType::SUBMIT_INFO,
-                p_next: ptr::null(),
-                wait_semaphore_count: 0,
-                p_wait_semaphores: ptr::null(),
-                p_wait_dst_stage_mask: ptr::null(),
-                command_buffer_count: 1,
-                p_command_buffers: &self.command_buffers[render_data.buffer_index],
-                signal_semaphore_count: render_data.signal_semaphores.len() as u32,
-                p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
-            });
-        }
+        render_data.submit_infos.push(vk::SubmitInfo {
+            s_type: vk::StructureType::SUBMIT_INFO,
+            p_next: ptr::null(),
+            wait_semaphore_count: render_data.wait_semaphores.len() as u32,
+            p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
+            p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
+            command_buffer_count: 1,
+            p_command_buffers: &self.command_buffers[render_data.buffer_index],
+            
+            signal_semaphore_count: render_data.signal_semaphores.len() as u32,
+            p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
+        });
     }
 }
 

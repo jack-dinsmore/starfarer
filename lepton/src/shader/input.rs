@@ -1,15 +1,20 @@
 use ash::vk;
 use std::mem::size_of;
+use cgmath::Matrix4;
 
 use crate::{Graphics, shader, shader::Data};
 
 static mut INPUT_PERIPHERALS: InputPeripherals = InputPeripherals::blank();
 
 pub enum InputType {
-    Object,
     Camera,
     Lights,
     Custom(usize, usize, u32, shader::ShaderStages),
+}
+
+#[repr(C)]
+pub struct PushConstants {
+    pub model: Matrix4<f32>,
 }
 
 impl InputType {
@@ -27,7 +32,6 @@ impl InputType {
 
     pub(crate) fn get_size(&self) -> u32 {
         match self {
-            InputType::Object => size_of::<shader::builtin::ObjectData>() as u32,
             InputType::Camera => size_of::<shader::builtin::CameraData>() as u32,
             InputType::Lights => size_of::<shader::builtin::LightsData>() as u32,
             InputType::Custom(_, s, _, _) => *s as u32,
@@ -36,7 +40,6 @@ impl InputType {
 
     pub(crate) fn get_binding(&self) -> u32 {
         match self {
-            InputType::Object => shader::builtin::ObjectData::BINDING,
             InputType::Camera => shader::builtin::CameraData::BINDING,
             InputType::Lights => shader::builtin::LightsData::BINDING,
             InputType::Custom(_, _, l, _) => *l,
@@ -45,7 +48,6 @@ impl InputType {
 
     pub(crate) fn get_stages(&self) -> vk::ShaderStageFlags {
         vk::ShaderStageFlags::from_raw(match self {
-            InputType::Object => shader::builtin::ObjectData::STAGES.f,
             InputType::Camera => shader::builtin::CameraData::STAGES.f,
             InputType::Lights => shader::builtin::LightsData::STAGES.f,
             InputType::Custom(_, _, _, s) => s.f,
@@ -55,7 +57,6 @@ impl InputType {
     pub fn get_input(&self) -> &Input {
         unsafe {
             match self {
-                InputType::Object => INPUT_PERIPHERALS.object.as_ref().expect("Input has not yet been created"),
                 InputType::Camera => INPUT_PERIPHERALS.camera.as_ref().expect("Input has not yet been created"),
                 InputType::Lights => INPUT_PERIPHERALS.lights.as_ref().expect("Input has not yet been created"),
                 InputType::Custom(id, ..) => INPUT_PERIPHERALS.custom[*id].as_ref().expect(&format!("Custom input {} has not yet been created", id))
@@ -67,7 +68,6 @@ impl InputType {
         let input = Input::new(memory_properties, num_images, self.get_size() as u64);
         unsafe {
             match self {
-                InputType::Object => INPUT_PERIPHERALS.object.get_or_insert(input),
                 InputType::Camera => INPUT_PERIPHERALS.camera.get_or_insert(input),
                 InputType::Lights => INPUT_PERIPHERALS.lights.get_or_insert(input),
                 InputType::Custom(id, ..) => INPUT_PERIPHERALS.custom[*id].get_or_insert(input),
@@ -77,7 +77,6 @@ impl InputType {
 }
 
 struct InputPeripherals {
-    object: Option<Input>,
     camera: Option<Input>,
     lights: Option<Input>,
     custom: Vec<Option<Input>>,
@@ -86,7 +85,6 @@ struct InputPeripherals {
 impl InputPeripherals {
     const fn blank() -> InputPeripherals {
         InputPeripherals{
-            object: None,
             camera: None,
             lights: None,
             custom: Vec::new(),

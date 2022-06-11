@@ -8,6 +8,7 @@ use winit::event_loop::EventLoop;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
+use cgmath::{Matrix4, Vector3};
 
 pub use primitives::*;
 pub use pattern::*;
