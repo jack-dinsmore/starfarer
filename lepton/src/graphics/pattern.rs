@@ -59,8 +59,8 @@ impl Pattern {
                 Action::DrawObject(o) => {
                     o.make_push_constants();
                     if let Some(ref m) = o.model {
-                        m.render(&shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
-                            &self.command_buffers[buffer_index], buffer_index, o.get_push_constant_bytes());
+                        m.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
+                            self.command_buffers[buffer_index], buffer_index, o.get_push_constant_bytes());
                     }
                 },
             }

@@ -42,10 +42,11 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 - Push constants
 - Multiple shaders for one pattern
 - Rerecording of command buffers
+- Inputs are no longer static
+- Removed reference passes of CommandBuffer and PipelineLayout
 
 ## Next:
 - Make a UI & implement double-buffered texture sharing as in https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan
-- Get rid of the reference passes of CommandBuffer and PipelineLayout
 - Resolve ////
 - Show FPS on UI
 - Rigid bodies

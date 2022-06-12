@@ -89,20 +89,20 @@ impl Model {
 }
 
 impl Model {
-    pub(crate) fn render(&self, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize, push_constant_bytes: &[u8]) {
+    pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: &[u8]) {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
         let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
 
         unsafe {
-            crate::get_device().cmd_bind_vertex_buffers(*command_buffer, 0, &vertex_buffers, &offsets);
-            crate::get_device().cmd_bind_index_buffer(*command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
-            crate::get_device().cmd_bind_descriptor_sets(*command_buffer, vk::PipelineBindPoint::GRAPHICS,
-                *pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
-            crate::get_device().cmd_push_constants(*command_buffer, *pipeline_layout,
+            crate::get_device().cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+            crate::get_device().cmd_bind_index_buffer(command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
+            crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
+                pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
+            crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
                 vk::ShaderStageFlags::VERTEX, 0, push_constant_bytes);
 
-            crate::get_device().cmd_draw_indexed(*command_buffer, self.num_indices, 1, 0, 0, 0);
+            crate::get_device().cmd_draw_indexed(command_buffer, self.num_indices, 1, 0, 0, 0);
         }
     }
 
