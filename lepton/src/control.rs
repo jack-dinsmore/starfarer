@@ -59,6 +59,7 @@ impl Control {
                         | WindowEvent::Resized(new_size) => {
                             graphics.terminate();
                             graphics.resize_framebuffer(new_size.width, new_size.height);
+                            lepton.resize(&graphics);
                         },
                         | _ => {},
                     }
@@ -72,9 +73,8 @@ impl Control {
                     lepton.update(delta_time);
                     match graphics.begin_frame() {
                         Some(mut data) => {
-                            lepton.render(&mut data);
+                            lepton.render(&graphics, &mut data);
                             graphics.end_frame(data);
-                            lepton.check_reload(&graphics);
                         },
                         None => ()
                     };

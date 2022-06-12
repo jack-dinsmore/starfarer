@@ -55,5 +55,5 @@ pub struct RenderData {
     pub(crate) wait_stages: [vk::PipelineStageFlags; 1],
     pub(crate) signal_semaphores: [vk::Semaphore; 1],
     pub buffer_index: usize,
-    pub(crate) submit_infos: vk::SubmitInfo,
+    pub(crate) submit_infos: Vec<vk::SubmitInfo>,
 }

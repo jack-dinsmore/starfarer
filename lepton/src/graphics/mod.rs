@@ -226,8 +226,6 @@ impl Graphics {
             }
         };
 
-        // pattern.update_uniform_buffer(image_index as usize);
-
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
@@ -248,8 +246,6 @@ impl Graphics {
     }
 
     pub(crate) fn end_frame(&mut self, mut data: RenderData) {
-        data.complete();
-        
         unsafe {
             crate::get_device()
                 .queue_submit(
@@ -290,7 +286,6 @@ impl Graphics {
             self.recreate_swapchain();
         }
         
-        //pattern.check_swapchain_version(&self);
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
@@ -1035,7 +1030,7 @@ impl Graphics {
         let command_pool_create_info = vk::CommandPoolCreateInfo {
             s_type: vk::StructureType::COMMAND_POOL_CREATE_INFO,
             p_next: ptr::null(),
-            flags: vk::CommandPoolCreateFlags::empty(),
+            flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
             queue_family_index: queue_families.graphics_family.unwrap(),
         };
     

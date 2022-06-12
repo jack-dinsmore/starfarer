@@ -307,23 +307,12 @@ impl Graphics {
 
         let set_layouts = [ubo_layout];
 
-<<<<<<< Updated upstream
-        let push_constant_range = [vk::PushConstantRange {
+        let push_constant_ranges = [vk::PushConstantRange {
             offset: 0,
             size: std::mem::size_of::<shader::PushConstants>() as u32,
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
-=======
-            //setup push constants
-        let push_constant_ranges = [vk::PushConstantRange {
-            offset: 0,
-            size: std::mem::size_of::<PushConstants>() as u32,
-            stage_flags: vk::ShaderStageFlags::VERTEX,
-        }];
-
-
->>>>>>> Stashed changes
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo {
             s_type: vk::StructureType::PIPELINE_LAYOUT_CREATE_INFO,
             p_next: ptr::null(),

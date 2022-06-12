@@ -11,49 +11,40 @@ const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.003;
 
 struct Starfarer {
+    shader: Shader,
+    pattern: Pattern,
     camera: Camera,
     lights: Lights,
     ui: UserInterface,
     key_tracker: KeyTracker,
     physics: Physics,
-    data: StarfarerData,
     docking_port: Object,
     sun: Object,
-    pos: Vector3<f32>,
 }
 
 impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
-        let ship_model = Model::new(graphics, &pattern, VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Path(&Path::new(TEXTURE_PATH)))
+        let pattern = Pattern::new(graphics);
+        let shader = Shader::new::<builtin::TextureShader>(graphics);
+        let camera = Camera::new(graphics);
+        let mut lights = Lights::new();
+        let ui = UserInterface::new(graphics);
+        
+        let physics = Physics::new();
+
+        let ship_model = Model::new::<builtin::TextureShader>(graphics, &shader,
+            VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Path(&Path::new(TEXTURE_PATH)))
             .expect("Model creation failed");
 
-        let pattern = pattern.new(graphics);
-        
-        let pattern = pattern.end(graphics);
-        pattern.record_fn = Some(Box::new(|pat: &mut Pattern<builtin::TextureShader>| {
-            pat.models.push(ship_model);
-        }));
+        let mut docking_port = Object::new(Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
+        docking_port.add_model(ship_model.clone());
 
-        let camera = Camera::new(graphics);
-        let physics = Physics::new();
-        let mut lights = Lights::new();
-        let docking_port = Object::new(
-            Vector3::new(0.0, 0.0, 0.0),
-            Quaternion::new(1.0, 0.0, 0.0, 0.0),
-        );
-        let mut sun = Object::new(
-            Vector3::new(5.0, -5.0, 10.0),
-            Quaternion::new(1.0, 0.0, 0.0, 0.0),
-        );
-        lights.illuminate(&mut sun, shader::LightFeatures {
-            diffuse_coeff: 1.0,
-            specular_coeff: 1.0,
-            shininess: 1
-        });
-        let ui = UserInterface::new(graphics);
+        let mut sun = Object::new(Vector3::new(5.0, -5.0, 10.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
+        lights.illuminate(&mut sun, shader::LightFeatures { diffuse_coeff: 1.0, specular_coeff: 1.0, shininess: 1});
 
         Self {
             pattern,
+            shader,
             camera,
             lights,
             ui,
@@ -61,7 +52,6 @@ impl Starfarer {
             physics,
             docking_port,
             sun,
-            pos: Vector3::new(0.0, -1.0, 0.0),
         }
     }
 }
@@ -77,30 +67,22 @@ impl Lepton for Starfarer {
             camera_adjust *= delta_time / camera_adjust.magnitude();
         }
         self.camera.adjust(camera_adjust);
-        self.pos.y += 0.01;
+        self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * delta_time as f64);
 
         // User interface
-        unsafe {
-            lepton::model::TEST_PUSH_CONSTANTS.model = Matrix4::from_translation(self.pos);
-        }
     }
     
-    fn render(&mut self, render_data: &mut RenderData) {
+    fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData) {
         // Update inputs
         self.docking_port.update_light(&mut self.lights, None);
         self.camera.update_input(render_data.buffer_index);
         self.lights.update_input(render_data.buffer_index);
-        self.docking_port.update_input();
 
         // Record
-        self.pattern.record(&[
-
-        ])
-
-        // Record
-        self.pattern.record(&[
-
-        ])
+        self.pattern.record(graphics, render_data.buffer_index, &mut vec![
+            Action::LoadShader(&self.shader),
+            Action::DrawObject(&mut self.docking_port),
+        ]);
 
         // Actually render
         self.pattern.render(render_data);
@@ -124,12 +106,6 @@ impl Lepton for Starfarer {
     fn mouse_motion(&mut self, delta: (f64, f64)) -> bool {
         self.camera.turn(-delta.1 as f32 * SENSITIVITY, -delta.0 as f32 * SENSITIVITY);
         true
-    }
-
-    fn check_reload(&mut self, graphics: &Graphics) {
-        //// Ideally, this would be moved inside a pattern call.
-        self.pattern.check_reload(graphics);
-        self.ui.check_reload(graphics);
     }
 }
 

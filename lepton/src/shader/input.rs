@@ -12,28 +12,11 @@ pub enum InputType {
     Custom(usize, usize, u32, shader::ShaderStages),
 }
 
-<<<<<<< Updated upstream
 #[repr(C)]
 pub struct PushConstants {
     pub model: Matrix4<f32>,
 }
 
-=======
-pub(crate) struct PushConstants {
-    pub model: Matrix4<f32>,
-}
-
-impl PushConstants {
-    pub(crate) fn push_constants(&self, command_buffer: vk::CommandBuffer, pipeline_layout: vk::PipelineLayout) {
-        unsafe {
-            let constants_ptr = std::slice::from_raw_parts((self as *const PushConstants) as *const u8, std::mem::size_of::<PushConstants>());
-            crate::get_device().cmd_push_constants(command_buffer, pipeline_layout, vk::ShaderStageFlags::VERTEX, 0, constants_ptr);
-        }
-    }
-}
-
-
->>>>>>> Stashed changes
 impl InputType {
     pub fn make_custom<D: Data>(id: usize) -> InputType {
         unsafe {

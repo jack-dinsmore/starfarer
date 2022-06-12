@@ -10,13 +10,6 @@ pub mod primitives;
 use primitives::*;
 use crate::{Graphics};
 use crate::shader::{Shader, Signature, PushConstants};
-<<<<<<< Updated upstream
-
-pub static mut TEST_PUSH_CONSTANTS: PushConstants = PushConstants {
-    model: Matrix4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
-};
-=======
->>>>>>> Stashed changes
 
 pub struct Model {
     vertex_buffer: vk::Buffer,
@@ -32,8 +25,6 @@ pub struct Model {
     _mip_levels: u32,
     
     descriptor_sets: Vec<vk::DescriptorSet>,
-
-    pub push_constant_bytes: &'static [u8],
 }
 
 pub enum VertexType<'a> {
@@ -51,7 +42,6 @@ pub enum TextureType<'a> {
 // Constructors
 impl Model {
     pub fn new<'a, S: Signature>(graphics: &Graphics, shader: &Shader, vertex_input: VertexType<'a>, texture_input: TextureType<'a>) -> Result<Rc<Self>> {
-        
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (texture_image, texture_image_memory, mip_levels) = match texture_input {
             TextureType::Path(p) => graphics.create_texture_image_from_path(p),
@@ -92,7 +82,6 @@ impl Model {
             texture_image_memory,
 
             descriptor_sets,
-            push_constant_bytes,
         };
 
         Ok(Rc::new(model))
@@ -100,7 +89,7 @@ impl Model {
 }
 
 impl Model {
-    pub(crate) fn render(&self, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize) {
+    pub(crate) fn render(&self, pipeline_layout: &vk::PipelineLayout, command_buffer: &vk::CommandBuffer, frame_index: usize, push_constant_bytes: &[u8]) {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
         let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
@@ -110,15 +99,9 @@ impl Model {
             crate::get_device().cmd_bind_index_buffer(*command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
             crate::get_device().cmd_bind_descriptor_sets(*command_buffer, vk::PipelineBindPoint::GRAPHICS,
                 *pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
-<<<<<<< Updated upstream
             crate::get_device().cmd_push_constants(*command_buffer, *pipeline_layout,
-                vk::ShaderStageFlags::VERTEX, 0, self.push_constant_bytes);
+                vk::ShaderStageFlags::VERTEX, 0, push_constant_bytes);
 
-=======
-            let constants = PushConstants {
-                model: cgmath::Matrix4::from_scale(1.0),
-            }.push_constants(*command_buffer, *pipeline_layout);
->>>>>>> Stashed changes
             crate::get_device().cmd_draw_indexed(*command_buffer, self.num_indices, 1, 0, 0, 0);
         }
     }

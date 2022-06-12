@@ -28,9 +28,11 @@ mod constants {
 
 pub mod prelude {
     pub use crate::{Lepton, Graphics, Control, Pattern, KeyTracker, VirtualKeyCode, RenderData,
+        Action,
+
         physics::Physics,
         model::{Model, TextureType, VertexType},
-        shader::{self, Camera, Lights, Object, builtin},
+        shader::{self, Shader, Camera, Lights, Object, builtin},
         ui::{UserInterface},
     };
 }
@@ -46,12 +48,16 @@ pub trait Lepton: 'static {
     /// Respond to mouse motion. True if the mouse pointer is to be reset to the center.
     fn mouse_motion(&mut self, _delta: (f64, f64)) -> bool {false}
 
-    /// Execute all the patterns
-    fn render(&mut self, render_data: &mut RenderData);
+    /// Render the scene by updating all inputs and rendering all patterns. The update function should
+    /// be preferred over the render function for all non-rendering code because render happens during 
+    /// GPU idle time and update can be called at any time from any thread.
+    fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData);
 
-    /// Update all the objects
+    /// Update all the objects.
     fn update(&mut self, delta_time: f32) {}
 
-    fn check_reload(&mut self, graphics: &Graphics);
+    /// Called only on window resize. Record any static patterns again. There is no need to 
+    /// record patterns that are recorded every frame, hence why this function is initially empty.
+    fn resize(&mut self, graphics: &Graphics) {}
 }
 

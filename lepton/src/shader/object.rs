@@ -1,13 +1,17 @@
 use cgmath::{Vector3, Vector4, Quaternion, Matrix4};
+use std::rc::Rc;
 
 use crate::shader;
+use crate::model::Model;
 
 
 pub struct Object {
     pub pos: Vector3<f64>,
     pub orientation: Quaternion<f64>,
     pub(crate) light_index: Option<usize>,
-    pub(crate) push_constants: shader::PushConstants
+    pub(crate) push_constants: shader::PushConstants,
+    push_constants_accurate: bool,
+    pub(crate) model: Option<Rc<Model>>,
 }
 
 impl Object {
@@ -18,22 +22,32 @@ impl Object {
             light_index: None,
             push_constants: shader::PushConstants {
                 model: Matrix4::from_scale(1.0),
-            }
+            },
+            model: None,
+            push_constants_accurate: false,
         }
     }
 
-    pub fn update_input(&mut self) {
-        //// Add orientation matrix. Also maybe don't compute data every frame
-<<<<<<< Updated upstream
-        let data = shader::PushConstants {
-            model: Matrix4::from_translation(self.pos.cast().unwrap()),
-        };
-=======
-        shader::PushConstants {
-            model: Matrix4::from_translation(self.pos.cast().unwrap()),
-        };//.push_constants();
-        //// Make this an adjustment to push constants instead.
->>>>>>> Stashed changes
+    pub fn add_model(&mut self, model: Rc<Model>) {
+        self.model = Some(model);
+    }
+
+    pub fn set_pos(&mut self, pos: Vector3<f64>) {
+        self.pos = pos;
+        self.push_constants_accurate = false;
+    }
+
+    pub(crate) fn make_push_constants(&mut self) {
+        if !self.push_constants_accurate { 
+            self.push_constants = shader::PushConstants {
+                model: Matrix4::from_translation(self.pos.cast().unwrap()),
+            };
+            self.push_constants_accurate = true;
+        }
+    }
+    
+    pub(crate) fn get_push_constant_bytes(&self) -> &[u8] {
+        unsafe { crate::tools::struct_as_bytes(&self.push_constants) }
     }
 
     pub fn update_light(&self, lights: &mut shader::Lights, features: Option<shader::LightFeatures>) {

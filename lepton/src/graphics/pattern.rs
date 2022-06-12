@@ -1,60 +1,31 @@
 use ash::vk;
 use std::ptr;
-use std::rc::Rc;
 
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
-use crate::model::Model;
-use crate::shader::{Shader, Signature};
+use crate::shader::Shader;
 use crate::shader::Object;
 use crate::RenderData;
 
 pub struct Pattern {
     command_buffers: Vec<vk::CommandBuffer>,
-    swapchain_current_version: u32,
 }
 
-pub enum Command<'a> {
-    DrawObject(&'a Object),
+pub enum Action<'a> {
+    DrawObject(&'a mut Object),
     LoadShader(&'a Shader),
 }
 
 impl Pattern {
-    /*pub fn check_reload(&mut self, graphics: &Graphics) {
-        if graphics.swapchain_ideal_version != self.swapchain_current_version {
-            // Unload command buffer
-            unsafe { crate::get_device().free_command_buffers(graphics.command_pool, &self.command_buffers); }
-
-            // Reload command buffer
-            let command_buffers = graphics.allocate_command_buffer();
-            self.shader.reload(graphics);
-
-            for (i, &command_buffer) in command_buffers.iter().enumerate() {
-                graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
-
-                for model in &self.models {
-                    model.render(&self.shader.pipeline_layout, &command_buffer, i);
-                }
-
-                graphics.end_command_buffer(command_buffer);
-            }
-
-            self.command_buffers = command_buffers;
-            self.swapchain_current_version = graphics.swapchain_ideal_version;
-        }
-    }*/
-
     pub fn new(graphics: &Graphics) -> Self {
         let command_buffers = graphics.allocate_command_buffer();
         Self {
             command_buffers,
-            swapchain_current_version: 0,
-            shaders: Vec::new(),
         }
     }
 
     pub fn render(&self, render_data: &mut RenderData) {
-        render_data.submit_infos = vk::SubmitInfo {
+        render_data.submit_infos.push(vk::SubmitInfo {
             s_type: vk::StructureType::SUBMIT_INFO,
             p_next: ptr::null(),
             wait_semaphore_count: render_data.wait_semaphores.len() as u32,
@@ -64,20 +35,38 @@ impl Pattern {
             p_command_buffers: &self.command_buffers[render_data.buffer_index],
             signal_semaphore_count: render_data.signal_semaphores.len() as u32,
             p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
-        };
+        });
     }
 
-    pub fn record(&mut self, graphics: &Graphics, commands: Vec<Command>) {
-        for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
-
-            graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
-
-            for model in &self.models {
-                model.render(&self.shader.pipeline_layout, &command_buffer, i);
-            }
-
-            graphics.end_command_buffer(command_buffer);*/
+    pub fn record(&mut self, graphics: &Graphics, buffer_index: usize, actions: &mut Vec<Action>) {
+        unsafe {
+            crate::get_device().reset_command_buffer(
+                self.command_buffers[buffer_index],
+                vk::CommandBufferResetFlags::empty(),
+            ).expect("Resetting the command buffer failed");
         }
+
+        graphics.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
+        let mut shader_up = None;
+
+        for action in actions.iter_mut() {
+            match action {
+                Action::LoadShader(s) => {
+                    unsafe { crate::get_device().cmd_bind_pipeline(self.command_buffers[buffer_index],
+                        vk::PipelineBindPoint::GRAPHICS, s.pipeline); }
+                    shader_up = Some(s);
+                },
+                Action::DrawObject(o) => {
+                    o.make_push_constants();
+                    if let Some(ref m) = o.model {
+                        m.render(&shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
+                            &self.command_buffers[buffer_index], buffer_index, o.get_push_constant_bytes());
+                    }
+                },
+            }
+        }
+
+        graphics.end_command_buffer(self.command_buffers[buffer_index]);
     }
 }
 
@@ -99,7 +88,7 @@ impl Graphics {
     }
 
     /// Begin the command buffer. Panics if buffer cannot be started.
-    fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer, pipeline: &vk::Pipeline, buffer_index: usize) {
+    fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer, buffer_index: usize) {
         let command_buffer_begin_info = vk::CommandBufferBeginInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
             p_next: ptr::null(),
@@ -125,15 +114,10 @@ impl Graphics {
         };
 
         unsafe {
-                crate::get_device().cmd_begin_render_pass(
-                    command_buffer,
-                    &render_pass_begin_info,
-                    vk::SubpassContents::INLINE,
-                );
-                crate::get_device().cmd_bind_pipeline(
+            crate::get_device().cmd_begin_render_pass(
                 command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                *pipeline,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
             );
         }
     }
