@@ -41,5 +41,7 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 - Push constants for object matrix
 - Allow multiple shaders for one pattern
 - Make a UI & implement double-buffered texture sharing as in https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan
+- Get rid of the reference passes of CommandBuffer and PipelineLayout
+- Resolve ////
 - Show FPS on UI
 - Rigid bodies

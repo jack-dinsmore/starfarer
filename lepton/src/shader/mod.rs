@@ -13,7 +13,7 @@ pub use camera::*;
 pub use lights::*;
 pub use object::*;
 pub use input::{Input, InputType};
-pub(crate) use input::{PushConstants};
+pub(crate) use input::PushConstants;
 use crate::Graphics;
 use crate::model::primitives::Vertex;
 use crate::shader;
@@ -58,15 +58,14 @@ pub trait Signature {
     const INPUTS: &'static [InputType];
 }
 
-pub struct Shader<S: Signature> {
+pub struct Shader {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) pipeline_layout: vk::PipelineLayout,
     pub(crate) ubo_layout: vk::DescriptorSetLayout,
-    phantom: PhantomData<S>,
 }
 
-impl<S: Signature> Shader<S> {
-    pub fn new(graphics: &mut Graphics) -> Self {
+impl Shader {
+    pub fn new<S: Signature>(graphics: &mut Graphics) -> Self {
         let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
         let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
 
@@ -108,11 +107,10 @@ impl<S: Signature> Shader<S> {
             pipeline,
             pipeline_layout,
             ubo_layout,
-            phantom: PhantomData,
         }
     }
 
-    pub(crate) fn reload(&mut self, graphics: &Graphics) {
+    pub(crate) fn reload<S: Signature>(&mut self, graphics: &Graphics) {
         //let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
         //let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
         let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
@@ -157,7 +155,7 @@ impl<S: Signature> Shader<S> {
     }
 }
 
-impl<S: Signature> Drop for Shader<S> {
+impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
             if let Some(device) = &crate::DEVICE {
@@ -309,20 +307,31 @@ impl Graphics {
 
         let set_layouts = [ubo_layout];
 
+<<<<<<< Updated upstream
         let push_constant_range = [vk::PushConstantRange {
             offset: 0,
             size: std::mem::size_of::<shader::PushConstants>() as u32,
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
+=======
+            //setup push constants
+        let push_constant_ranges = [vk::PushConstantRange {
+            offset: 0,
+            size: std::mem::size_of::<PushConstants>() as u32,
+            stage_flags: vk::ShaderStageFlags::VERTEX,
+        }];
+
+
+>>>>>>> Stashed changes
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo {
             s_type: vk::StructureType::PIPELINE_LAYOUT_CREATE_INFO,
             p_next: ptr::null(),
             flags: vk::PipelineLayoutCreateFlags::empty(),
             set_layout_count: set_layouts.len() as u32,
             p_set_layouts: set_layouts.as_ptr(),
-            push_constant_range_count: 1,
-            p_push_constant_ranges: push_constant_range.as_ptr(),
+            push_constant_range_count: push_constant_ranges.len() as u32,
+            p_push_constant_ranges: push_constant_ranges.as_ptr(),
         };
 
         let pipeline_layout = unsafe {

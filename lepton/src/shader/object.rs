@@ -24,9 +24,16 @@ impl Object {
 
     pub fn update_input(&mut self) {
         //// Add orientation matrix. Also maybe don't compute data every frame
+<<<<<<< Updated upstream
         let data = shader::PushConstants {
             model: Matrix4::from_translation(self.pos.cast().unwrap()),
         };
+=======
+        shader::PushConstants {
+            model: Matrix4::from_translation(self.pos.cast().unwrap()),
+        };//.push_constants();
+        //// Make this an adjustment to push constants instead.
+>>>>>>> Stashed changes
     }
 
     pub fn update_light(&self, lights: &mut shader::Lights, features: Option<shader::LightFeatures>) {

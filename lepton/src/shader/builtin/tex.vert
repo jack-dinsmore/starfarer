@@ -5,8 +5,14 @@
 
 #define NUM_LIGHTS 2
 
+<<<<<<< Updated upstream
 layout (push_constant) uniform PushConstants {
     mat4 model;
+=======
+layout( push_constant ) uniform PushConstants
+{
+	mat4 model;
+>>>>>>> Stashed changes
 } constants;
 layout (binding = 1) uniform CameraData {
     mat4 view;

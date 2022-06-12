@@ -55,13 +55,5 @@ pub struct RenderData {
     pub(crate) wait_stages: [vk::PipelineStageFlags; 1],
     pub(crate) signal_semaphores: [vk::Semaphore; 1],
     pub buffer_index: usize,
-    pub(crate) submit_infos: Vec<vk::SubmitInfo>,
-}
-
-impl RenderData {
-    pub(crate) fn complete(&mut self) {
-        let last_index = self.submit_infos.len() - 1;
-        self.submit_infos[last_index].signal_semaphore_count = self.signal_semaphores.len() as u32;
-        self.submit_infos[last_index].p_signal_semaphores = self.signal_semaphores.as_ptr();
-    }
+    pub(crate) submit_infos: vk::SubmitInfo,
 }

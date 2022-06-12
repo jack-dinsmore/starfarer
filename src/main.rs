@@ -10,14 +10,13 @@ const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.003;
 
-
 struct Starfarer {
-    pattern: Pattern::<builtin::TextureShader>,
     camera: Camera,
     lights: Lights,
     ui: UserInterface,
     key_tracker: KeyTracker,
     physics: Physics,
+    data: StarfarerData,
     docking_port: Object,
     sun: Object,
     pos: Vector3<f32>,
@@ -25,11 +24,15 @@ struct Starfarer {
 
 impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
-        let mut pattern = Pattern::<builtin::TextureShader>::begin(graphics);
         let ship_model = Model::new(graphics, &pattern, VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Path(&Path::new(TEXTURE_PATH)))
             .expect("Model creation failed");
-        pattern.add(ship_model);
+
+        let pattern = pattern.new(graphics);
+        
         let pattern = pattern.end(graphics);
+        pattern.record_fn = Some(Box::new(|pat: &mut Pattern<builtin::TextureShader>| {
+            pat.models.push(ship_model);
+        }));
 
         let camera = Camera::new(graphics);
         let physics = Physics::new();
@@ -88,6 +91,16 @@ impl Lepton for Starfarer {
         self.camera.update_input(render_data.buffer_index);
         self.lights.update_input(render_data.buffer_index);
         self.docking_port.update_input();
+
+        // Record
+        self.pattern.record(&[
+
+        ])
+
+        // Record
+        self.pattern.record(&[
+
+        ])
 
         // Actually render
         self.pattern.render(render_data);

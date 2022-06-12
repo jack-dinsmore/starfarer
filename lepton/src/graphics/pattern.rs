@@ -6,22 +6,21 @@ use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
 use crate::model::Model;
 use crate::shader::{Shader, Signature};
+use crate::shader::Object;
 use crate::RenderData;
 
-pub struct Pattern<S: Signature> {
+pub struct Pattern {
     command_buffers: Vec<vk::CommandBuffer>,
     swapchain_current_version: u32,
-    models: Vec<Rc<Model>>,
-    shader: Shader<S>,
 }
 
-pub struct UnfinishedPattern<S: Signature> {
-    models: Vec<Rc<Model>>,
-    pub(crate) shader: Shader<S>,
+pub enum Command<'a> {
+    DrawObject(&'a Object),
+    LoadShader(&'a Shader),
 }
 
-impl<S: Signature> Pattern<S> {
-    pub fn check_reload(&mut self, graphics: &Graphics) {
+impl Pattern {
+    /*pub fn check_reload(&mut self, graphics: &Graphics) {
         if graphics.swapchain_ideal_version != self.swapchain_current_version {
             // Unload command buffer
             unsafe { crate::get_device().free_command_buffers(graphics.command_pool, &self.command_buffers); }
@@ -43,20 +42,19 @@ impl<S: Signature> Pattern<S> {
             self.command_buffers = command_buffers;
             self.swapchain_current_version = graphics.swapchain_ideal_version;
         }
-    }
+    }*/
 
-    /// Begin writing to the pattern. Panics if the primary command buffer cannot be allocated or recording cannot begin.
-    pub fn begin(graphics: &mut Graphics) -> UnfinishedPattern<S> {
-        let shader = Shader::<S>::new(graphics);
-
-        UnfinishedPattern::<S> {
-            shader,
-            models: Vec::new(),
+    pub fn new(graphics: &Graphics) -> Self {
+        let command_buffers = graphics.allocate_command_buffer();
+        Self {
+            command_buffers,
+            swapchain_current_version: 0,
+            shaders: Vec::new(),
         }
     }
 
     pub fn render(&self, render_data: &mut RenderData) {
-        render_data.submit_infos.push(vk::SubmitInfo {
+        render_data.submit_infos = vk::SubmitInfo {
             s_type: vk::StructureType::SUBMIT_INFO,
             p_next: ptr::null(),
             wait_semaphore_count: render_data.wait_semaphores.len() as u32,
@@ -64,37 +62,21 @@ impl<S: Signature> Pattern<S> {
             p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
             command_buffer_count: 1,
             p_command_buffers: &self.command_buffers[render_data.buffer_index],
-            
             signal_semaphore_count: render_data.signal_semaphores.len() as u32,
             p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
-        });
-    }
-}
-
-impl<S: Signature> UnfinishedPattern<S> {
-    pub fn add(&mut self, model: Rc<Model>) {
-        self.models.push(model);
+        };
     }
 
-    /// Wrap up the unfinished pattern. Consumes self.
-    pub fn end(self, graphics: &Graphics) -> Pattern<S> {
-        let command_buffers = graphics.allocate_command_buffer();
+    pub fn record(&mut self, graphics: &Graphics, commands: Vec<Command>) {
+        for (i, &command_buffer) in self.command_buffers.iter().enumerate() {
 
-        for (i, &command_buffer) in command_buffers.iter().enumerate() {
             graphics.begin_command_buffer(command_buffer, &self.shader.pipeline, i);
 
             for model in &self.models {
                 model.render(&self.shader.pipeline_layout, &command_buffer, i);
             }
 
-            graphics.end_command_buffer(command_buffer);
-        }
-
-        Pattern {
-            shader: self.shader,
-            models: self.models,
-            command_buffers,
-            swapchain_current_version: graphics.swapchain_current_version,
+            graphics.end_command_buffer(command_buffer);*/
         }
     }
 }
