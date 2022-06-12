@@ -121,9 +121,9 @@ impl Graphics {
         let command_pool = Graphics::create_command_pool(&get_device(), &queue_family);
         let descriptor_pool = Graphics::create_descriptor_pool(&get_device(), swapchain_stuff.swapchain_images.len(), input_types.len(), num_shaders);
         let (color_image, color_image_view, color_image_memory) = Graphics::create_color_resources(
-                &get_device(), swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
+                &get_device(), swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, physical_device_memory_properties, msaa_samples);
         let (depth_image, depth_image_view, depth_image_memory) = Graphics::create_depth_resources(&instance, &get_device(), physical_device,
-            command_pool, graphics_queue, swapchain_stuff.swapchain_extent, &physical_device_memory_properties, msaa_samples);
+            command_pool, graphics_queue, swapchain_stuff.swapchain_extent, physical_device_memory_properties, msaa_samples);
         let framebuffers = Graphics::create_framebuffers(
             &get_device(), render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
         let sync_objects = Graphics::create_sync_objects(&get_device(), MAX_FRAMES_IN_FLIGHT);
@@ -327,7 +327,7 @@ impl Graphics {
     }
 
     pub(crate) fn create_image(device: &ash::Device, width: u32, height: u32, mip_levels: u32, num_samples: vk::SampleCountFlags, format: vk::Format, tiling: vk::ImageTiling,
-        usage: vk::ImageUsageFlags,required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Image, vk::DeviceMemory) {
+        usage: vk::ImageUsageFlags,required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: vk::PhysicalDeviceMemoryProperties) -> (vk::Image, vk::DeviceMemory) {
         let image_create_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
             p_next: ptr::null(),
@@ -383,7 +383,7 @@ impl Graphics {
         (texture_image, texture_image_memory)
     }
 
-    pub(crate) fn create_buffer(device: &ash::Device, size: vk::DeviceSize, usage: vk::BufferUsageFlags, required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: &vk::PhysicalDeviceMemoryProperties) -> (vk::Buffer, vk::DeviceMemory) {
+    pub(crate) fn create_buffer(device: &ash::Device, size: vk::DeviceSize, usage: vk::BufferUsageFlags, required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: vk::PhysicalDeviceMemoryProperties) -> (vk::Buffer, vk::DeviceMemory) {
         let buffer_create_info = vk::BufferCreateInfo {
             s_type: vk::StructureType::BUFFER_CREATE_INFO,
             p_next: ptr::null(),
@@ -949,13 +949,13 @@ impl Graphics {
         self.swapchain_imageviews = Graphics::create_image_views(&get_device(), self.swapchain_format, &self.swapchain_images);
         self.render_pass = Graphics::create_render_pass(&self.instance, &get_device(), self.physical_device, self.swapchain_format, self.msaa_samples);
         let color_resources = Graphics::create_color_resources(&get_device(), self.swapchain_format,
-            self.swapchain_extent, &self.memory_properties, self.msaa_samples);
+            self.swapchain_extent, self.memory_properties, self.msaa_samples);
         self.color_image = color_resources.0;
         self.color_image_view = color_resources.1;
         self.color_image_memory = color_resources.2;
 
         let depth_resources = Graphics::create_depth_resources(&self.instance, &get_device(), self.physical_device,
-            self.command_pool, self.graphics_queue, self.swapchain_extent, &self.memory_properties, self.msaa_samples);
+            self.command_pool, self.graphics_queue, self.swapchain_extent, self.memory_properties, self.msaa_samples);
         self.depth_image = depth_resources.0;
         self.depth_image_view = depth_resources.1;
         self.depth_image_memory = depth_resources.2;
@@ -1041,7 +1041,8 @@ impl Graphics {
         }
     }
 
-    fn create_color_resources(device: &ash::Device, swapchain_format: vk::Format, swapchain_extent: vk::Extent2D, device_memory_properties: &vk::PhysicalDeviceMemoryProperties, msaa_samples: vk::SampleCountFlags) -> (vk::Image, vk::ImageView, vk::DeviceMemory) {
+    fn create_color_resources(device: &ash::Device, swapchain_format: vk::Format, swapchain_extent: vk::Extent2D,
+        device_memory_properties: vk::PhysicalDeviceMemoryProperties, msaa_samples: vk::SampleCountFlags) -> (vk::Image, vk::ImageView, vk::DeviceMemory) {
         let color_format = swapchain_format;
 
         let (color_image, color_image_memory) = Graphics::create_image(
@@ -1068,7 +1069,7 @@ impl Graphics {
         (color_image, color_image_view, color_image_memory)
     }
 
-    fn find_memory_type(type_filter: u32, required_properties: vk::MemoryPropertyFlags, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> u32 {
+    fn find_memory_type(type_filter: u32, required_properties: vk::MemoryPropertyFlags, mem_properties: vk::PhysicalDeviceMemoryProperties) -> u32 {
         for (i, memory_type) in mem_properties.memory_types.iter().enumerate() {
             if (type_filter & (1 << i)) > 0 && memory_type.property_flags.contains(required_properties)
             {
@@ -1079,8 +1080,10 @@ impl Graphics {
         panic!("Failed to find suitable memory type!")
     }
     
-    fn create_depth_resources(instance: &ash::Instance, device: &ash::Device,  physical_device: vk::PhysicalDevice, _command_pool: vk::CommandPool, _submit_queue: vk::Queue,
-        swapchain_extent: vk::Extent2D, device_memory_properties: &vk::PhysicalDeviceMemoryProperties, msaa_samples: vk::SampleCountFlags) -> (vk::Image, vk::ImageView, vk::DeviceMemory) {
+    fn create_depth_resources(instance: &ash::Instance, device: &ash::Device,  physical_device: vk::PhysicalDevice, _command_pool: vk::CommandPool,
+        _submit_queue: vk::Queue, swapchain_extent: vk::Extent2D, device_memory_properties: vk::PhysicalDeviceMemoryProperties,
+        msaa_samples: vk::SampleCountFlags) -> (vk::Image, vk::ImageView, vk::DeviceMemory) {
+
         let depth_format = Graphics::find_depth_format(instance, physical_device);
         let (depth_image, depth_image_memory) = Graphics::create_image(
             device,

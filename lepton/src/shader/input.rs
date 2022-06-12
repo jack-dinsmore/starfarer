@@ -1,10 +1,19 @@
 use ash::vk;
 use std::mem::size_of;
-use cgmath::Matrix4;
 
 use crate::{Graphics, shader, shader::Data};
 
-static mut INPUT_PERIPHERALS: InputPeripherals = InputPeripherals::blank();
+static mut INPUT_UNIFORM_BUFFERS: InputUniformBuffers = InputUniformBuffers {
+    camera: Vec::new(),
+    lights: Vec::new(),
+    custom: Vec::new(),
+};
+
+struct InputUniformBuffers {
+    camera: Vec<vk::Buffer>,
+    lights: Vec<vk::Buffer>,
+    custom: Vec<Vec<vk::Buffer>>,
+}
 
 pub enum InputType {
     Camera,
@@ -12,22 +21,23 @@ pub enum InputType {
     Custom(usize, usize, u32, shader::ShaderStages),
 }
 
-#[repr(C)]
-pub struct PushConstants {
-    pub model: Matrix4<f32>,
-}
-
 impl InputType {
-    pub fn make_custom<D: Data>(id: usize) -> InputType {
+    pub fn make_custom<D: Data>() -> InputType {
+        let id = unsafe { INPUT_UNIFORM_BUFFERS.custom.len() };
+        unsafe { INPUT_UNIFORM_BUFFERS.custom.push(Vec::new()) };
+        InputType::Custom(id, size_of::<D>(), D::BINDING, D::STAGES)
+    }
+
+    pub fn new(&self, graphics: &Graphics) -> Input {
+        let input = Input::new(graphics.memory_properties, graphics.swapchain_images.len(), self.get_size() as u64);
         unsafe {
-            if id > INPUT_PERIPHERALS.custom.len() {
-                panic!("Cannot make a custom with id {} when lower ids are still unassigned.", id)
-            }
-            if id < INPUT_PERIPHERALS.custom.len() {
-                panic!("Cannot make a custom with id {}, which has already been created.", id)
+            match self {
+                InputType::Camera => { INPUT_UNIFORM_BUFFERS.camera = input.uniform_buffers.clone(); },
+                InputType::Lights => { INPUT_UNIFORM_BUFFERS.lights = input.uniform_buffers.clone(); },
+                InputType::Custom(i, _, _, _) => { INPUT_UNIFORM_BUFFERS.custom[*i] = input.uniform_buffers.clone(); },
             }
         }
-        InputType::Custom(id, size_of::<D>(), D::BINDING, D::STAGES)
+        input
     }
 
     pub(crate) fn get_size(&self) -> u32 {
@@ -54,44 +64,25 @@ impl InputType {
         })
     }
 
-    pub fn get_input(&self) -> &Input {
+    pub(crate) fn get_uniform_descriptor_buffer_info(&self, buffer_index: usize) -> Vec<vk::DescriptorBufferInfo> {
+        
+        vec![vk::DescriptorBufferInfo {
+            buffer: self.get_uniform_buffers(buffer_index),
+            offset: 0,
+            range: self.get_size() as u64,
+        }]
+    }
+
+    fn get_uniform_buffers(&self, buffer_index: usize) -> vk::Buffer {
         unsafe {
             match self {
-                InputType::Camera => INPUT_PERIPHERALS.camera.as_ref().expect("Input has not yet been created"),
-                InputType::Lights => INPUT_PERIPHERALS.lights.as_ref().expect("Input has not yet been created"),
-                InputType::Custom(id, ..) => INPUT_PERIPHERALS.custom[*id].as_ref().expect(&format!("Custom input {} has not yet been created", id))
+                InputType::Camera => INPUT_UNIFORM_BUFFERS.camera[buffer_index],
+                InputType::Lights => INPUT_UNIFORM_BUFFERS.lights[buffer_index],
+                InputType::Custom(i, _, _, _) => INPUT_UNIFORM_BUFFERS.custom[*i][buffer_index],
             }
         }
     }
-
-    pub fn make(&self, memory_properties: &vk::PhysicalDeviceMemoryProperties, num_images: usize) {
-        let input = Input::new(memory_properties, num_images, self.get_size() as u64);
-        unsafe {
-            match self {
-                InputType::Camera => INPUT_PERIPHERALS.camera.get_or_insert(input),
-                InputType::Lights => INPUT_PERIPHERALS.lights.get_or_insert(input),
-                InputType::Custom(id, ..) => INPUT_PERIPHERALS.custom[*id].get_or_insert(input),
-            };
-        }
-    }
 }
-
-struct InputPeripherals {
-    camera: Option<Input>,
-    lights: Option<Input>,
-    custom: Vec<Option<Input>>,
-}
-
-impl InputPeripherals {
-    const fn blank() -> InputPeripherals {
-        InputPeripherals{
-            camera: None,
-            lights: None,
-            custom: Vec::new(),
-        }
-    }
-}
-
 
 pub struct Input {
     uniform_buffers: Vec<vk::Buffer>,
@@ -100,7 +91,7 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn new(memory_properties: &vk::PhysicalDeviceMemoryProperties, num_images: usize, size: u64) -> Self {
+    fn new(memory_properties: vk::PhysicalDeviceMemoryProperties, num_images: usize, size: u64) -> Self {
         let (uniform_buffers, uniform_buffers_memory) = Graphics::create_uniform_buffers(memory_properties, num_images, size);
         Input {
             uniform_buffers,
@@ -125,14 +116,6 @@ impl Input {
             crate::get_device().unmap_memory(self.uniform_buffers_memory[buffer_index]);
         }
     }
-
-    pub(crate) fn get_uniform_descriptor_buffer_info(&self, buffer_index: usize) -> Vec<vk::DescriptorBufferInfo> {
-        vec![vk::DescriptorBufferInfo {
-            buffer: self.uniform_buffers[buffer_index],
-            offset: 0,
-            range: self.size,
-        }]
-    }
 }
 
 impl Drop for Input {
@@ -149,8 +132,7 @@ impl Drop for Input {
 }
 
 impl Graphics {
-
-    fn create_uniform_buffers(memory_properties: &vk::PhysicalDeviceMemoryProperties, num_images: usize,
+    fn create_uniform_buffers(memory_properties: vk::PhysicalDeviceMemoryProperties, num_images: usize,
         buffer_size: u64) -> (Vec<vk::Buffer>, Vec<vk::DeviceMemory>) {
 
         let mut uniform_buffers = Vec::new();

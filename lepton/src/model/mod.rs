@@ -9,7 +9,7 @@ use cgmath::Matrix4;
 pub mod primitives;
 use primitives::*;
 use crate::{Graphics};
-use crate::shader::{Shader, Signature, PushConstants};
+use crate::shader::{Shader, Signature};
 
 pub struct Model {
     vertex_buffer: vk::Buffer,
@@ -202,7 +202,7 @@ impl Graphics {
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            &self.memory_properties,
+            self.memory_properties,
         );
 
         unsafe {
@@ -226,7 +226,7 @@ impl Graphics {
                 | vk::ImageUsageFlags::TRANSFER_DST
                 | vk::ImageUsageFlags::SAMPLED,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            &self.memory_properties,
+            self.memory_properties,
         );
 
         self.transition_image_layout(
@@ -303,7 +303,7 @@ impl Graphics {
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            &self.memory_properties,
+            self.memory_properties,
         );
 
         unsafe {
@@ -320,7 +320,7 @@ impl Graphics {
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            &self.memory_properties,
+            self.memory_properties,
         );
 
         self.copy_buffer(&self.graphics_queue, staging_buffer, vertex_buffer, buffer_size);
@@ -337,7 +337,7 @@ impl Graphics {
         let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
 
         let (staging_buffer, staging_buffer_memory) = Self::create_buffer(&crate::get_device(), buffer_size, vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT, &self.memory_properties);
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT, self.memory_properties);
             
         unsafe {
             let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
@@ -353,7 +353,7 @@ impl Graphics {
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            &self.memory_properties,
+            self.memory_properties,
         );
 
         self.copy_buffer(&self.graphics_queue, staging_buffer, index_buffer, buffer_size);
@@ -401,7 +401,7 @@ impl Graphics {
             let mut locations = Vec::with_capacity(S::INPUTS.len() + 1);
             
             for input_type in S::INPUTS {
-                descriptor_buffer_infos.push((0..descriptor_sets.len()).map(|i| input_type.get_input().get_uniform_descriptor_buffer_info(i))
+                descriptor_buffer_infos.push((0..descriptor_sets.len()).map(|i| input_type.get_uniform_descriptor_buffer_info(i))
                     .collect::<Vec<Vec<vk::DescriptorBufferInfo>>>());
                 locations.push(input_type.get_binding());
             }

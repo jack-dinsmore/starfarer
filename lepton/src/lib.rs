@@ -29,10 +29,9 @@ mod constants {
 pub mod prelude {
     pub use crate::{Lepton, Graphics, Control, Pattern, KeyTracker, VirtualKeyCode, RenderData,
         Action,
-
         physics::Physics,
         model::{Model, TextureType, VertexType},
-        shader::{self, Shader, Camera, Lights, Object, builtin},
+        shader::{InputType, Shader, Camera, Lights, LightFeatures, Object, builtin},
         ui::{UserInterface},
     };
 }

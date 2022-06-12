@@ -9,7 +9,7 @@ pub struct Object {
     pub pos: Vector3<f64>,
     pub orientation: Quaternion<f64>,
     pub(crate) light_index: Option<usize>,
-    pub(crate) push_constants: shader::PushConstants,
+    pub(crate) push_constants: shader::builtin::PushConstants,
     push_constants_accurate: bool,
     pub(crate) model: Option<Rc<Model>>,
 }
@@ -20,7 +20,7 @@ impl Object {
             pos,
             orientation,
             light_index: None,
-            push_constants: shader::PushConstants {
+            push_constants: shader::builtin::PushConstants {
                 model: Matrix4::from_scale(1.0),
             },
             model: None,
@@ -39,7 +39,7 @@ impl Object {
 
     pub(crate) fn make_push_constants(&mut self) {
         if !self.push_constants_accurate { 
-            self.push_constants = shader::PushConstants {
+            self.push_constants = shader::builtin::PushConstants {
                 model: Matrix4::from_translation(self.pos.cast().unwrap()),
             };
             self.push_constants_accurate = true;

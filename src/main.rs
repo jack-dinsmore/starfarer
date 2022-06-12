@@ -27,7 +27,7 @@ impl Starfarer {
         let pattern = Pattern::new(graphics);
         let shader = Shader::new::<builtin::TextureShader>(graphics);
         let camera = Camera::new(graphics);
-        let mut lights = Lights::new();
+        let mut lights = Lights::new(graphics);
         let ui = UserInterface::new(graphics);
         
         let physics = Physics::new();
@@ -40,7 +40,7 @@ impl Starfarer {
         docking_port.add_model(ship_model.clone());
 
         let mut sun = Object::new(Vector3::new(5.0, -5.0, 10.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
-        lights.illuminate(&mut sun, shader::LightFeatures { diffuse_coeff: 1.0, specular_coeff: 1.0, shininess: 1});
+        lights.illuminate(&mut sun, LightFeatures { diffuse_coeff: 1.0, specular_coeff: 1.0, shininess: 1});
 
         Self {
             pattern,
@@ -118,7 +118,7 @@ impl Drop for Starfarer {
 fn main() {
     let control = Control::new();
     let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true,
-        vec![shader::InputType::Camera, shader::InputType::Lights], 2);
+        vec![InputType::Camera, InputType::Lights], 2);
     
     let starfarer = Starfarer::new(&mut graphics);
     

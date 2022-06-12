@@ -5,6 +5,11 @@ use crate::{shader, model};
 
 pub const NUM_LIGHTS: usize = 2;
 
+#[repr(C)]
+pub struct PushConstants {
+    pub model: Matrix4<f32>,
+}
+
 pub struct TextureShader;
 impl shader::Signature for TextureShader {
     type V = model::primitives::VertexModel;

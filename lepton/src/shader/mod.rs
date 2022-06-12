@@ -7,13 +7,11 @@ pub mod builtin;
 use ash::vk;
 use std::ptr;
 use std::ffi::CString;
-use std::marker::PhantomData;
 
 pub use camera::*;
 pub use lights::*;
 pub use object::*;
 pub use input::{Input, InputType};
-pub(crate) use input::PushConstants;
 use crate::Graphics;
 use crate::model::primitives::Vertex;
 use crate::shader;
@@ -309,7 +307,7 @@ impl Graphics {
 
         let push_constant_ranges = [vk::PushConstantRange {
             offset: 0,
-            size: std::mem::size_of::<shader::PushConstants>() as u32,
+            size: std::mem::size_of::<shader::builtin::PushConstants>() as u32,
             stage_flags: vk::ShaderStageFlags::VERTEX,
         }];
 
@@ -376,7 +374,6 @@ impl Graphics {
                 stage_flags: input_type.get_stages(),
                 p_immutable_samplers: ptr::null(),
             });
-            input_type.make(memory_properties, num_images);
         }
         ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
             // Texture sampler

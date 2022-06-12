@@ -1,6 +1,7 @@
 use cgmath::Vector4;
 
-use crate::shader;
+use crate::shader::{Input, InputType, builtin, Object};
+use crate::Graphics;
 
 pub struct LightFeatures {
     pub diffuse_coeff: f32,
@@ -15,21 +16,25 @@ impl LightFeatures {
 }
 
 pub struct Lights {
-    index_state: [bool; shader::builtin::NUM_LIGHTS],
-    pub(crate) light_pos: [Vector4::<f32>; shader::builtin::NUM_LIGHTS],
-    pub(crate) light_features: [Vector4<f32>; shader::builtin::NUM_LIGHTS],
+    index_state: [bool; builtin::NUM_LIGHTS],
+    pub(crate) light_pos: [Vector4::<f32>; builtin::NUM_LIGHTS],
+    pub(crate) light_features: [Vector4<f32>; builtin::NUM_LIGHTS],
+    input: Input,
 }
 
 impl Lights {
-    pub fn new() -> Self {
+    pub fn new(graphics: &Graphics) -> Self {
+        let input = InputType::Lights.new(graphics);
+
         Self {
-            index_state: [false; shader::builtin::NUM_LIGHTS],
-            light_pos: [Vector4::new(0.0, 0.0, 0.0, 0.0); shader::builtin::NUM_LIGHTS],
-            light_features: [Vector4::new(0.0, 0.0, 0.0, 0.0); shader::builtin::NUM_LIGHTS],
+            index_state: [false; builtin::NUM_LIGHTS],
+            light_pos: [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS],
+            light_features: [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS],
+            input,
         }
     }
 
-    pub fn illuminate(&mut self, object: &mut shader::Object, features: LightFeatures) {
+    pub fn illuminate(&mut self, object: &mut Object, features: LightFeatures) {
         let index = match object.light_index{
             Some(i) => i,
             None => self.pop_index()
@@ -39,7 +44,7 @@ impl Lights {
         object.light_index = Some(index);
     }
 
-    pub fn unilluminate(&mut self, object: &mut shader::Object) {
+    pub fn unilluminate(&mut self, object: &mut Object) {
         if let Some(i) = object.light_index {
             self.push_index(i);
             object.light_index = None;
@@ -47,8 +52,8 @@ impl Lights {
     }
 
     pub fn update_input(&mut self, buffer_index: usize) {
-        let mut light_pos = [Vector4::new(0.0, 0.0, 0.0, 0.0); shader::builtin::NUM_LIGHTS];
-        let mut light_features = [Vector4::new(0.0, 0.0, 0.0, 0.0); shader::builtin::NUM_LIGHTS];
+        let mut light_pos = [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS];
+        let mut light_features = [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS];
 
         let mut num_lights = 0;
         for (index, state) in self.index_state.iter().enumerate() {
@@ -59,12 +64,12 @@ impl Lights {
             }
         }
 
-        let data = shader::builtin::LightsData {
+        let data = builtin::LightsData {
             light_pos,
             light_features,
             num_lights: num_lights as u32,
         };
-        shader::InputType::Lights.get_input().update(data, buffer_index);
+        self.input.update(data, buffer_index);
     }
 
     fn pop_index(&mut self) -> usize {

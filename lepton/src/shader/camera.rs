@@ -12,6 +12,7 @@ pub struct Camera {
     pos: Point3<f32>,
     theta: f32,
     phi: f32,
+    input: shader::Input,
 }
 
 
@@ -23,11 +24,14 @@ impl Camera {
             camera_pos: Vector4::new(0.0, 0.0, 0.0, 0.0),
         };
 
+        let input = shader::InputType::Camera.new(graphics);
+
         Camera {
             aspect: graphics.swapchain_extent.width as f32 / graphics.swapchain_extent.height as f32,
             pos: Point3::new(2.0, 0.0, 2.0),
             theta: PI as f32 / 2.0,
             phi: 0.0,
+            input,
         }
     }
 
@@ -48,7 +52,7 @@ impl Camera {
             },
             camera_pos: Vector4::new(self.pos.x, self.pos.y, self.pos.z, 0.0)
         };
-        shader::InputType::Camera.get_input().update(data, buffer_index);
+        self.input.update(data, buffer_index);
     }
 
     pub fn adjust(&mut self, v: Vector3<f32>) {
