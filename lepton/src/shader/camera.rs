@@ -17,18 +17,12 @@ pub struct Camera {
 
 
 impl Camera {
-    pub fn new(graphics: &Graphics) -> Camera {
-        let data = shader::builtin::CameraData {
-            view: Matrix4::from_scale(1.0),
-            proj: Matrix4::from_scale(1.0),
-            camera_pos: Vector4::new(0.0, 0.0, 0.0, 0.0),
-        };
-
+    pub fn new(graphics: &Graphics, pos: Point3<f32>) -> Camera {
         let input = shader::InputType::Camera.new(graphics);
 
         Camera {
             aspect: graphics.swapchain_extent.width as f32 / graphics.swapchain_extent.height as f32,
-            pos: Point3::new(2.0, 0.0, 2.0),
+            pos,
             theta: PI as f32 / 2.0,
             phi: 0.0,
             input,

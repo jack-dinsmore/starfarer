@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub mod shader;
 pub mod model;
 pub mod physics;
@@ -53,10 +54,10 @@ pub trait Lepton: 'static {
     fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData);
 
     /// Update all the objects.
-    fn update(&mut self, delta_time: f32) {}
+    fn update(&mut self, _delta_time: f32) {}
 
     /// Called only on window resize. Record any static patterns again. There is no need to 
     /// record patterns that are recorded every frame, hence why this function is initially empty.
-    fn resize(&mut self, graphics: &Graphics) {}
+    fn resize(&mut self, _graphics: &Graphics) {}
 }
 

@@ -80,7 +80,7 @@ impl Vertex for Vertex3Tex {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex2Tex {
-    pub pos: [f32; 4],
+    pub pos: [f32; 2],
     pub tex_coord: [f32; 2],
 }
 impl Vertex for Vertex2Tex {

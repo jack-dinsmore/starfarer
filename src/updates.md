@@ -45,8 +45,16 @@ Started. I'm using the vulkan tutorial [here](https://kylemayes.github.io/vulkan
 - Inputs are no longer static
 - Removed reference passes of CommandBuffer and PipelineLayout
 
-## Next:
+## June 14:
+
+I made the UI struct and implemented a single-buffered texture. Performance is horrible in debug mode for a complete UI redraw (5 FPS) but much better in release mode (>60 FPS). Used https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan as a guide.
+
+Also moved the texture binding to zero instead of 3.
+
+## To do:
+
 - Make a UI & implement double-buffered texture sharing as in https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan
+- Move input layouts so that 0 is used
 - Resolve ////
 - Show FPS on UI
 - Rigid bodies

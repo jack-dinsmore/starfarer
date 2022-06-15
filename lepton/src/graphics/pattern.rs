@@ -1,11 +1,12 @@
 use ash::vk;
 use std::ptr;
+use std::rc::Rc;
 
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
-use crate::shader::Shader;
-use crate::shader::Object;
+use crate::shader::{Shader, Object};
 use crate::RenderData;
+use crate::model::Model;
 
 pub struct Pattern {
     command_buffers: Vec<vk::CommandBuffer>,
@@ -14,6 +15,7 @@ pub struct Pattern {
 pub enum Action<'a> {
     DrawObject(&'a mut Object),
     LoadShader(&'a Shader),
+    DrawModel(&'a Rc<Model>),
 }
 
 impl Pattern {
@@ -60,8 +62,12 @@ impl Pattern {
                     o.make_push_constants();
                     if let Some(ref m) = o.model {
                         m.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
-                            self.command_buffers[buffer_index], buffer_index, o.get_push_constant_bytes());
+                            self.command_buffers[buffer_index], buffer_index, Some(o.get_push_constant_bytes()));
                     }
+                },
+                Action::DrawModel(m) => {
+                    m.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
+                        self.command_buffers[buffer_index], buffer_index, None);
                 },
             }
         }

@@ -8,7 +8,6 @@ use winit::event_loop::EventLoop;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
-use cgmath::{Matrix4, Vector3};
 
 pub use primitives::*;
 pub use pattern::*;
@@ -245,7 +244,7 @@ impl Graphics {
         })
     }
 
-    pub(crate) fn end_frame(&mut self, mut data: RenderData) {
+    pub(crate) fn end_frame(&mut self, data: RenderData) {
         unsafe {
             crate::get_device()
                 .queue_submit(

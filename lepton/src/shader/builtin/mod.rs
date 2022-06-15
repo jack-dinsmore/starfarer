@@ -10,6 +10,7 @@ pub struct PushConstants {
     pub model: Matrix4<f32>,
 }
 
+
 pub struct TextureShader;
 impl shader::Signature for TextureShader {
     type V = model::primitives::VertexModel;
@@ -20,6 +21,15 @@ impl shader::Signature for TextureShader {
         shader::InputType::Lights,
     ];
 }
+
+pub struct UIShader;
+impl shader::Signature for UIShader {
+    type V = model::primitives::Vertex2Tex;
+    const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.vert", kind: vert);
+    const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.frag", kind: frag);
+    const INPUTS: &'static [shader::InputType] = &[];
+}
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -32,7 +42,6 @@ impl shader::Data for CameraData {
     const BINDING: u32 = 1;
     const STAGES: shader::ShaderStages = shader::ShaderStages::VERTEX.and(shader::ShaderStages::FRAGMENT);
 }
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

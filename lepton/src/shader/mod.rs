@@ -92,7 +92,7 @@ impl Shader {
             },
         ];
 
-        let ubo_layout = Graphics::create_ubo_layout(S::INPUTS, &graphics.memory_properties, graphics.swapchain_imageviews.len());
+        let ubo_layout = Graphics::create_ubo_layout(S::INPUTS);
 
         let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, ubo_layout);
 
@@ -282,13 +282,13 @@ impl Graphics {
         };
 
         let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
-            blend_enable: vk::FALSE,
+            blend_enable: vk::TRUE,
             color_write_mask: vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A,
-            src_color_blend_factor: vk::BlendFactor::ONE,
-            dst_color_blend_factor: vk::BlendFactor::ZERO,
+            src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+            dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
             color_blend_op: vk::BlendOp::ADD,
-            src_alpha_blend_factor: vk::BlendFactor::ONE,
-            dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+            src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
+            dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
             alpha_blend_op: vk::BlendOp::ADD,
         }];
 
@@ -363,7 +363,7 @@ impl Graphics {
     }
 
 
-    fn create_ubo_layout(input_types: &'static [InputType], memory_properties: &vk::PhysicalDeviceMemoryProperties, num_images: usize) -> vk::DescriptorSetLayout {
+    fn create_ubo_layout(input_types: &'static [InputType]) -> vk::DescriptorSetLayout {
         let mut ubo_layout_bindings = Vec::with_capacity(input_types.len() + 1);
         for input_type in input_types {
             ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
@@ -377,7 +377,7 @@ impl Graphics {
         }
         ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
             // Texture sampler
-            binding: 3,
+            binding: 0,
             descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
             descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::FRAGMENT,

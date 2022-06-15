@@ -4,7 +4,6 @@ use std::path::Path;
 use std::ptr;
 use std::cmp::max;
 use std::rc::Rc;
-use cgmath::Matrix4;
 
 pub mod primitives;
 use primitives::*;
@@ -18,9 +17,9 @@ pub struct Model {
     index_buffer_memory: vk::DeviceMemory,
     num_indices: u32,
 
-    texture_image: vk::Image,
+    pub(crate) texture_image: vk::Image,
     texture_image_view: vk::ImageView,
-    texture_image_memory: vk::DeviceMemory,
+    pub(crate) texture_image_memory: vk::DeviceMemory,
     texture_sampler: vk::Sampler,
     _mip_levels: u32,
     
@@ -35,7 +34,7 @@ pub enum VertexType<'a> {
 }
 
 pub enum TextureType<'a> {
-    Blank,
+    Blank(u32, u32),
     Path(&'a Path),
 }
 
@@ -45,7 +44,7 @@ impl Model {
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (texture_image, texture_image_memory, mip_levels) = match texture_input {
             TextureType::Path(p) => graphics.create_texture_image_from_path(p),
-            TextureType::Blank => graphics.create_texture_image_from_path(&Path::new("assets/endeavour/accessories/port.png")),
+            TextureType::Blank(width, height) => graphics.create_empty_texture_image(width, height),
         };
         let texture_image_view = graphics.create_texture_image_view(texture_image, mip_levels);
         let texture_sampler = graphics.create_texture_sampler(mip_levels);
@@ -89,7 +88,7 @@ impl Model {
 }
 
 impl Model {
-    pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: &[u8]) {
+    pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
         let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
@@ -99,8 +98,10 @@ impl Model {
             crate::get_device().cmd_bind_index_buffer(command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
             crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
                 pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
-            crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
-                vk::ShaderStageFlags::VERTEX, 0, push_constant_bytes);
+            if let Some(pc) = push_constant_bytes {
+                crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX, 0, pc);
+            }
 
             crate::get_device().cmd_draw_indexed(command_buffer, self.num_indices, 1, 0, 0, 0);
         }
@@ -230,7 +231,6 @@ impl Graphics {
         );
 
         self.transition_image_layout(
-            &self.graphics_queue,
             texture_image,
             vk::Format::R8G8B8A8_SRGB,
             vk::ImageLayout::UNDEFINED,
@@ -260,6 +260,67 @@ impl Graphics {
         }
 
         (texture_image, texture_image_memory, mip_levels)
+    }
+
+    fn create_empty_texture_image(&self, image_width: u32, image_height: u32) -> (vk::Image, vk::DeviceMemory, u32) {
+        let image_data: Vec<u8> = vec![0; (image_width * image_height) as usize * 4];
+        let image_size =
+            (std::mem::size_of::<u8>() as u32 * image_width * image_height * 4) as vk::DeviceSize;
+        
+        let (staging_buffer, staging_buffer_memory) = Graphics::create_buffer(
+            &crate::get_device(),
+            image_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            self.memory_properties,
+        );
+
+        unsafe {
+            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, image_size, vk::MemoryMapFlags::empty())
+                .expect("Failed to Map Memory") as *mut u8;
+
+            data_ptr.copy_from_nonoverlapping(image_data.as_ptr(), image_data.len());
+
+            crate::get_device().unmap_memory(staging_buffer_memory);
+        }
+
+        let (texture_image, texture_image_memory) = Graphics::create_image(
+            &crate::get_device(),
+            image_width,
+            image_height,
+            1,
+            vk::SampleCountFlags::TYPE_1,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::TRANSFER_SRC
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::SAMPLED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            self.memory_properties,
+        );
+
+        self.transition_image_layout(
+            texture_image,
+            vk::Format::R8G8B8A8_SRGB,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            1,
+        );
+
+        self.copy_buffer_to_image(
+            self.graphics_queue,
+            staging_buffer,
+            texture_image,
+            image_width,
+            image_height,
+        );
+
+        unsafe {
+            crate::get_device().destroy_buffer(staging_buffer, None);
+            crate::get_device().free_memory(staging_buffer_memory, None);
+        }
+
+        (texture_image, texture_image_memory, 1)
     }
 
     fn create_texture_image_view(&self, texture_image: vk::Image, mip_levels: u32) -> vk::ImageView {
@@ -429,7 +490,7 @@ impl Graphics {
                     s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
                     p_next: ptr::null(),
                     dst_set: descritptor_set,
-                    dst_binding: 3,
+                    dst_binding: 0,
                     dst_array_element: 0,
                     descriptor_count: 1,
                     descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -481,7 +542,7 @@ impl Graphics {
         self.end_single_time_command(&submit_queue, command_buffer);
     }
 
-    fn transition_image_layout(&self, submit_queue: &vk::Queue, image: vk::Image, _format: vk::Format, old_layout: vk::ImageLayout, new_layout: vk::ImageLayout, mip_levels: u32) {
+    pub(crate) fn transition_image_layout(&self, image: vk::Image, _format: vk::Format, old_layout: vk::ImageLayout, new_layout: vk::ImageLayout, mip_levels: u32) {
         let command_buffer = self.begin_single_time_command();
 
         let src_access_mask;
@@ -511,6 +572,20 @@ impl Graphics {
                 vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
             source_stage = vk::PipelineStageFlags::TOP_OF_PIPE;
             destination_stage = vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+        } else if old_layout == vk::ImageLayout::UNDEFINED
+            && new_layout == vk::ImageLayout::GENERAL
+        {
+            src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+            dst_access_mask = vk::AccessFlags::TRANSFER_READ;
+            source_stage = vk::PipelineStageFlags::TRANSFER;
+            destination_stage = vk::PipelineStageFlags::TRANSFER;
+        } else if old_layout == vk::ImageLayout::GENERAL
+            && new_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        {
+            src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+            dst_access_mask = vk::AccessFlags::SHADER_READ;
+            source_stage = vk::PipelineStageFlags::TRANSFER;
+            destination_stage = vk::PipelineStageFlags::FRAGMENT_SHADER;
         } else {
             panic!("Unsupported layout transition!")
         }
@@ -546,7 +621,7 @@ impl Graphics {
             );
         }
 
-        self.end_single_time_command(submit_queue, command_buffer);
+        self.end_single_time_command(&self.graphics_queue, command_buffer);
     }
 
     fn generate_mipmaps(&self, submit_queue: &vk::Queue, image: vk::Image, tex_width: u32, tex_height: u32, mip_levels: u32) {

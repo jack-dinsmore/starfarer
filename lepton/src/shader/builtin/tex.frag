@@ -16,7 +16,7 @@ layout (binding = 2) uniform LightsData {
     uint num_lights;
 } lights_ubo;
 
-layout (binding = 3) uniform sampler2D texSampler;
+layout (binding = 0) uniform sampler2D texSampler;
 
 layout (location = 0) in vec3 normal;
 layout (location = 1) in vec2 texCoord;

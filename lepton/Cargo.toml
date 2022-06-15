@@ -16,6 +16,7 @@ memoffset = "0.6.5"
 tobj = "3.2.2"
 vk-shader-macros = "0.2.8"
 anyhow = "1.0.57"
+lambert-bate = "0.1.0"
 
 [dependencies.bitflags]
 version = ">= 1.0.4"
