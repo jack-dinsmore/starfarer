@@ -51,10 +51,14 @@ I made the UI struct and implemented a single-buffered texture. Performance is h
 
 Also moved the texture binding to zero instead of 3.
 
+# June 19
+
+Rendering text and drew FPS to screen.
+
 ## To do:
 
-- Make a UI & implement double-buffered texture sharing as in https://stackoverflow.com/questions/40574668/how-to-update-texture-for-every-frame-in-vulkan
-- Move input layouts so that 0 is used
+- Include bytes for textures, fonts, and .obj files
+- Text kerning and automatic font image creation
+- More UI abilities (including escape menu and clicking buttons)
 - Resolve ////
-- Show FPS on UI
 - Rigid bodies

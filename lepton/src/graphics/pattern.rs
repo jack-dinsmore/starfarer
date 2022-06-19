@@ -7,6 +7,7 @@ use crate::Graphics;
 use crate::shader::{Shader, Object};
 use crate::RenderData;
 use crate::model::Model;
+use crate::ui::UserInterface;
 
 pub struct Pattern {
     command_buffers: Vec<vk::CommandBuffer>,
@@ -16,6 +17,7 @@ pub enum Action<'a> {
     DrawObject(&'a mut Object),
     LoadShader(&'a Shader),
     DrawModel(&'a Rc<Model>),
+    DrawUI(&'a UserInterface),
 }
 
 impl Pattern {
@@ -69,6 +71,10 @@ impl Pattern {
                     m.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
                         self.command_buffers[buffer_index], buffer_index, None);
                 },
+                Action::DrawUI(u) => {
+                    u.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout, 
+                        self.command_buffers[buffer_index], buffer_index)
+                }
             }
         }
 

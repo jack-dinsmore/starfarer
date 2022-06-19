@@ -14,7 +14,7 @@ impl Control {
     }
 
     /// Run the main game loop. Consumes self.
-    pub fn run<L: Lepton>(self, mut graphics: Graphics, mut lepton: L, print_fps: bool) -> ! {
+    pub fn run<L: Lepton>(self, mut graphics: Graphics, mut lepton: L) -> ! {
         let mut tick_counter = FPSLimiter::new();
 
         self.event_loop.run(move |event, _, control_flow| {
@@ -78,10 +78,6 @@ impl Control {
                         },
                         None => ()
                     };
-                    
-                    if print_fps {
-                        print!("FPS: {}\r", tick_counter.fps());
-                    }
                     tick_counter.tick_frame();
                 },
                 | Event::LoopDestroyed => {

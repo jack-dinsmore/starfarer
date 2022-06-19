@@ -10,6 +10,7 @@ use primitives::*;
 use crate::{Graphics};
 use crate::shader::{Shader, Signature};
 
+#[derive(Debug)]
 pub struct Model {
     vertex_buffer: vk::Buffer,
     vertex_buffer_memory: vk::DeviceMemory,
@@ -34,22 +35,22 @@ pub enum VertexType<'a> {
 }
 
 pub enum TextureType<'a> {
-    Blank(u32, u32),
+    Blank,
     Path(&'a Path),
 }
 
 // Constructors
 impl Model {
-    pub fn new<'a, S: Signature>(graphics: &Graphics, shader: &Shader, vertex_input: VertexType<'a>, texture_input: TextureType<'a>) -> Result<Rc<Self>> {
+    pub fn new<'a, S: Signature>(graphics: &Graphics, shader: &Shader, vertex_type: VertexType<'a>, texture_type: TextureType<'a>) -> Result<Rc<Self>> {
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
-        let (texture_image, texture_image_memory, mip_levels) = match texture_input {
+        let (texture_image, texture_image_memory, mip_levels) = match texture_type {
             TextureType::Path(p) => graphics.create_texture_image_from_path(p),
-            TextureType::Blank(width, height) => graphics.create_empty_texture_image(width, height),
+            TextureType::Blank => unimplemented!(),
         };
         let texture_image_view = graphics.create_texture_image_view(texture_image, mip_levels);
         let texture_sampler = graphics.create_texture_sampler(mip_levels);
 
-        let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_input {
+        let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
             VertexType::SpecifiedModel(v, i) => {
                 (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
             },
@@ -89,21 +90,17 @@ impl Model {
 
 impl Model {
     pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
-        let vertex_buffers = [self.vertex_buffer];
-        let offsets = [0_u64];
-        let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
-
+        self.bind_all(pipeline_layout, command_buffer, frame_index, push_constant_bytes);
         unsafe {
-            crate::get_device().cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-            crate::get_device().cmd_bind_index_buffer(command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
-            crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
-                pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
-            if let Some(pc) = push_constant_bytes {
-                crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX, 0, pc);
-            }
-
             crate::get_device().cmd_draw_indexed(command_buffer, self.num_indices, 1, 0, 0, 0);
+        }
+    }
+
+    pub(crate) fn render_some(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
+        push_constant_bytes: Option<&[u8]>, start_index: usize, count: usize) {
+        self.bind_all(pipeline_layout, command_buffer, frame_index, push_constant_bytes);
+        unsafe {
+            crate::get_device().cmd_draw_indexed(command_buffer, count as u32, 1, start_index as u32, 0, 0);
         }
     }
 
@@ -146,6 +143,23 @@ impl Model {
         }
     
         Ok((vertices, indices))
+    }
+
+    fn bind_all(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
+        let vertex_buffers = [self.vertex_buffer];
+        let offsets = [0_u64];
+        let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
+
+        unsafe {
+            crate::get_device().cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+            crate::get_device().cmd_bind_index_buffer(command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
+            crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
+                pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
+            if let Some(pc) = push_constant_bytes {
+                crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT, 0, pc);
+            }
+        }
     }
 }
 
@@ -572,20 +586,6 @@ impl Graphics {
                 vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
             source_stage = vk::PipelineStageFlags::TOP_OF_PIPE;
             destination_stage = vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
-        } else if old_layout == vk::ImageLayout::UNDEFINED
-            && new_layout == vk::ImageLayout::GENERAL
-        {
-            src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
-            dst_access_mask = vk::AccessFlags::TRANSFER_READ;
-            source_stage = vk::PipelineStageFlags::TRANSFER;
-            destination_stage = vk::PipelineStageFlags::TRANSFER;
-        } else if old_layout == vk::ImageLayout::GENERAL
-            && new_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-        {
-            src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
-            dst_access_mask = vk::AccessFlags::SHADER_READ;
-            source_stage = vk::PipelineStageFlags::TRANSFER;
-            destination_stage = vk::PipelineStageFlags::FRAGMENT_SHADER;
         } else {
             panic!("Unsupported layout transition!")
         }

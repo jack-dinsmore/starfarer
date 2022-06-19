@@ -30,7 +30,7 @@ impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
         let pattern = Pattern::new(graphics);
         let model_shader = Shader::new::<builtin::TextureShader>(graphics);
-        let ui_shader = Shader::new::<builtin::UIShader>(graphics);
+        let ui_shader = Shader::new::<builtin::UISignature>(graphics);
         let camera = Camera::new(graphics, Point3::new(2.0, 0.0, 1.0));
         let mut lights = Lights::new(graphics);
         let ui = UserInterface::new(graphics, &ui_shader);
@@ -79,8 +79,7 @@ impl Lepton for Starfarer {
         self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * delta_time as f64);
         self.docking_port2.set_pos(self.docking_port2.pos - Vector3::unit_y() * delta_time as f64);
 
-        // User interface
-        //self.ui.update();
+        self.ui.update(delta_time);
     }
     
     fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData) {
@@ -89,15 +88,13 @@ impl Lepton for Starfarer {
         self.camera.update_input(render_data.buffer_index);
         self.lights.update_input(render_data.buffer_index);
 
-        self.ui.write(graphics, render_data.buffer_index);
-
         // Record
         self.pattern.record(graphics, render_data.buffer_index, &mut vec![
             Action::LoadShader(&self.model_shader),
             Action::DrawObject(&mut self.docking_port),
             Action::DrawObject(&mut self.docking_port2),
-            Action::LoadShader(&self.ui_shader),
-            Action::DrawModel(&self.ui.model),
+            Action::LoadShader(&mut self.ui_shader),
+            Action::DrawUI(&self.ui),
         ]);
 
         // Actually render
@@ -136,5 +133,5 @@ fn main() {
     
     let starfarer = Starfarer::new(&mut graphics);
     
-    control.run(graphics, starfarer, true);
+    control.run(graphics, starfarer);
 }

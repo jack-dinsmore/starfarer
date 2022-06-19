@@ -6,14 +6,24 @@ use crate::{shader, model};
 pub const NUM_LIGHTS: usize = 2;
 
 #[repr(C)]
-pub struct PushConstants {
+pub struct ObjectPushConstants {
     pub model: Matrix4<f32>,
+}
+
+#[repr(C)]
+pub struct UIPushConstants {
+    pub x: f32,
+    pub y: f32,
+    pub stretch_x: f32,
+    pub stretch_y: f32,
+    pub color: [f32; 4],
 }
 
 
 pub struct TextureShader;
 impl shader::Signature for TextureShader {
     type V = model::primitives::VertexModel;
+    type PushConstants = ObjectPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.frag", kind: frag);
     const INPUTS: &'static [shader::InputType] = &[
@@ -22,9 +32,10 @@ impl shader::Signature for TextureShader {
     ];
 }
 
-pub struct UIShader;
-impl shader::Signature for UIShader {
+pub struct UISignature;
+impl shader::Signature for UISignature {
     type V = model::primitives::Vertex2Tex;
+    type PushConstants = UIPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.frag", kind: frag);
     const INPUTS: &'static [shader::InputType] = &[];

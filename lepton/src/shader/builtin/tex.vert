@@ -5,7 +5,7 @@
 
 #define NUM_LIGHTS 2
 
-layout (push_constant) uniform PushConstants {
+layout (push_constant) uniform ObjectPushConstants {
     mat4 model;
 } constants;
 layout (binding = 1) uniform CameraData {

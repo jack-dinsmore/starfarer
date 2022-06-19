@@ -51,9 +51,11 @@ pub trait Data: Clone + Copy + Send + Sync + 'static {
 
 pub trait Signature {
     type V: Vertex;
+    type PushConstants;
     const VERTEX_CODE: &'static [u32];
     const FRAGMENT_CODE: &'static [u32];
     const INPUTS: &'static [InputType];
+    
 }
 
 pub struct Shader {
@@ -307,8 +309,8 @@ impl Graphics {
 
         let push_constant_ranges = [vk::PushConstantRange {
             offset: 0,
-            size: std::mem::size_of::<shader::builtin::PushConstants>() as u32,
-            stage_flags: vk::ShaderStageFlags::VERTEX,
+            size: std::mem::size_of::<S::PushConstants>() as u32,
+            stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
         }];
 
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo {
