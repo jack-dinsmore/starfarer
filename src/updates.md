@@ -55,10 +55,11 @@ Also moved the texture binding to zero instead of 3.
 
 Rendering text and drew FPS to screen.
 
+Automatic font file creation
+
 ## To do:
 
-- Include bytes for textures, fonts, and .obj files
-- Text kerning and automatic font image creation
+- Text kerning and single-channel font textures
 - More UI abilities (including escape menu and clicking buttons)
 - Resolve ////
 - Rigid bodies

@@ -1,4 +1,4 @@
-use cgmath::{Quaternion, Vector3};
+use cgmath::{Vector3};
 use crate::shader::Object;
 
 pub struct Physics {

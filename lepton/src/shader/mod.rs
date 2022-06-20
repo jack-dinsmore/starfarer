@@ -14,7 +14,6 @@ pub use object::*;
 pub use input::{Input, InputType};
 use crate::Graphics;
 use crate::model::primitives::Vertex;
-use crate::shader;
 
 pub struct ShaderStages {
     f: u32,

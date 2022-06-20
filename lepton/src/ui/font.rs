@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::path::Path;
-use vk_shader_macros::include_glsl;
 use ash::vk;
 
 use crate::Graphics;
@@ -9,8 +8,6 @@ use crate::shader::{Shader, builtin};
 
 const N_COLS: usize = 12;
 const N_ROWS: usize = 8;
-const SIZE: usize = 48;
-
 
 
 pub struct Font {
@@ -22,9 +19,9 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(graphics: &Graphics, shader: &Shader) -> Font {
-        let standard_width = SIZE as f32 / graphics.window_width as f32 * 2.0;
-        let standard_height = SIZE as f32 / graphics.window_height as f32 * 2.0;
+    pub fn new(graphics: &Graphics, shader: &Shader, font_name: &str, size: usize) -> Font {
+        let standard_width = size as f32 / graphics.window_width as f32 * 2.0;
+        let standard_height = size as f32 / graphics.window_height as f32 * 2.0;
 
         let mut vertices = Vec::with_capacity((N_COLS + 1) * (N_ROWS + 1));
         let mut indices = Vec::with_capacity(6 * N_COLS * N_ROWS);
@@ -58,7 +55,7 @@ impl Font {
         }
 
         let model = Model::new::<builtin::UISignature>(graphics, shader, VertexType::Specified2Tex(vertices, indices),
-            TextureType::Path(&Path::new("assets/fonts/rendered/font.png"))).expect("Could not find font");
+            TextureType::Path(&Path::new(&format!("assets/fonts/rendered/{}-{}.png", font_name, size)))).expect("Could not find font");
         Self {
             model: Rc::try_unwrap(model).unwrap(),
             screen_width: graphics.window_width as f32,

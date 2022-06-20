@@ -1,11 +1,9 @@
 pub mod font;
 
-use vk_shader_macros::include_glsl;
 use ash::vk;
 
 use crate::{Graphics};
-use crate::model::{Model, VertexType, TextureType, primitives::Vertex2Tex};
-use crate::shader::{Shader, Signature, InputType};
+use crate::shader::Shader;
 use font::Font;
 
 pub type Color = [f64; 3];
@@ -26,7 +24,7 @@ pub struct UserInterface {
 
 impl UserInterface {
     pub fn new(graphics: &mut Graphics, shader: &Shader) -> Self {
-        let font = Font::new(graphics, shader);
+        let font = Font::new(graphics, shader, "Roboto-Regular", 48);
         Self {
             font,
             time: 0.0,
@@ -39,7 +37,7 @@ impl UserInterface {
     pub fn update(&mut self, delta_time: f32) {
         self.time += delta_time;
         self.frames += 1;
-        if (self.time as i32 != self.short_time) {
+        if self.time as i32 != self.short_time {
             // Update FPS
             self.fps = self.frames;
             self.frames = 0;
