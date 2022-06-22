@@ -35,19 +35,22 @@ pub enum VertexType<'a> {
 }
 
 pub enum TextureType<'a> {
-    Blank,
-    Path(&'a Path),
+    Mipmap(&'a Path),
+    Transparency(&'a Path),
+    Monochrome(&'a Path),
 }
 
 // Constructors
 impl Model {
     pub fn new<'a, S: Signature>(graphics: &Graphics, shader: &Shader, vertex_type: VertexType<'a>, texture_type: TextureType<'a>) -> Result<Rc<Self>> {
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
-        let (texture_image, texture_image_memory, mip_levels) = match texture_type {
-            TextureType::Path(p) => graphics.create_texture_image_from_path(p),
-            TextureType::Blank => unimplemented!(),
+        let (path, format, mipmap) = match texture_type {
+            TextureType::Mipmap(p) => (p, vk::Format::R8G8B8A8_SRGB, true),
+            TextureType::Transparency(p) => (p, vk::Format::R8G8B8A8_SRGB, false),
+            TextureType::Monochrome(p) => (p, vk::Format::R8_SRGB, false),
         };
-        let texture_image_view = graphics.create_texture_image_view(texture_image, mip_levels);
+        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image_from_path(path, format, mipmap);
+        let texture_image_view = graphics.create_texture_image_view(texture_image, format, mip_levels);
         let texture_sampler = graphics.create_texture_sampler(mip_levels);
 
         let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
@@ -196,17 +199,24 @@ impl Graphics {
         }
     }
 
-    fn create_texture_image_from_path(&self, texture_path: &Path) -> (vk::Image, vk::DeviceMemory, u32) {
+    fn create_texture_image_from_path(&self, texture_path: &Path, format: vk::Format, mipmap: bool) -> (vk::Image, vk::DeviceMemory, u32) {
         let mut image_object = image::open(texture_path).unwrap(); // this function is slow in debug mode.
         image_object = image_object.flipv();
         let (image_width, image_height) = (image_object.width(), image_object.height());
-        let image_data = image_object.to_rgba8().into_raw(); // Altered from the tutorial. May be wrong for different image formats
+        let (image_data, word_width) = match format {
+            vk::Format::R8G8B8A8_SRGB => (image_object.to_rgba8().into_raw(), 4),
+            vk::Format::R8_SRGB => (image_object.to_luma8().into_raw(), 1),
+            _ => panic!("Image format {:?} is not supported.", format)
+        };
         let image_size =
-            (::std::mem::size_of::<u8>() as u32 * image_width * image_height * 4) as vk::DeviceSize;
-        let mip_levels = ((::std::cmp::max(image_width, image_height) as f32)
-            .log2()
-            .floor() as u32)
-            + 1;
+            (::std::mem::size_of::<u8>() as u32 * image_width * image_height * word_width) as vk::DeviceSize;
+        let mip_levels = match mipmap {
+            true => ((::std::cmp::max(image_width, image_height) as f32)
+                .log2()
+                .floor() as u32)
+                + 1,
+            false => 1,
+        };
 
         if image_size <= 0 {
             panic!("Failed to load texture image!")
@@ -235,7 +245,7 @@ impl Graphics {
             image_height,
             mip_levels,
             vk::SampleCountFlags::TYPE_1,
-            vk::Format::R8G8B8A8_SRGB,
+            format,
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST
@@ -243,10 +253,9 @@ impl Graphics {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
             self.memory_properties,
         );
-
         self.transition_image_layout(
             texture_image,
-            vk::Format::R8G8B8A8_SRGB,
+            format,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             mip_levels,
@@ -259,7 +268,7 @@ impl Graphics {
             image_width,
             image_height,
         );
-
+        
         self.generate_mipmaps(
             &self.graphics_queue,
             texture_image,
@@ -276,69 +285,8 @@ impl Graphics {
         (texture_image, texture_image_memory, mip_levels)
     }
 
-    fn create_empty_texture_image(&self, image_width: u32, image_height: u32) -> (vk::Image, vk::DeviceMemory, u32) {
-        let image_data: Vec<u8> = vec![0; (image_width * image_height) as usize * 4];
-        let image_size =
-            (std::mem::size_of::<u8>() as u32 * image_width * image_height * 4) as vk::DeviceSize;
-        
-        let (staging_buffer, staging_buffer_memory) = Graphics::create_buffer(
-            &crate::get_device(),
-            image_size,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            self.memory_properties,
-        );
-
-        unsafe {
-            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, image_size, vk::MemoryMapFlags::empty())
-                .expect("Failed to Map Memory") as *mut u8;
-
-            data_ptr.copy_from_nonoverlapping(image_data.as_ptr(), image_data.len());
-
-            crate::get_device().unmap_memory(staging_buffer_memory);
-        }
-
-        let (texture_image, texture_image_memory) = Graphics::create_image(
-            &crate::get_device(),
-            image_width,
-            image_height,
-            1,
-            vk::SampleCountFlags::TYPE_1,
-            vk::Format::R8G8B8A8_SRGB,
-            vk::ImageTiling::OPTIMAL,
-            vk::ImageUsageFlags::TRANSFER_SRC
-                | vk::ImageUsageFlags::TRANSFER_DST
-                | vk::ImageUsageFlags::SAMPLED,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            self.memory_properties,
-        );
-
-        self.transition_image_layout(
-            texture_image,
-            vk::Format::R8G8B8A8_SRGB,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            1,
-        );
-
-        self.copy_buffer_to_image(
-            self.graphics_queue,
-            staging_buffer,
-            texture_image,
-            image_width,
-            image_height,
-        );
-
-        unsafe {
-            crate::get_device().destroy_buffer(staging_buffer, None);
-            crate::get_device().free_memory(staging_buffer_memory, None);
-        }
-
-        (texture_image, texture_image_memory, 1)
-    }
-
-    fn create_texture_image_view(&self, texture_image: vk::Image, mip_levels: u32) -> vk::ImageView {
-        Self::create_image_view(&crate::get_device(), texture_image, vk::Format::R8G8B8A8_SRGB, vk::ImageAspectFlags::COLOR, mip_levels)
+    fn create_texture_image_view(&self, texture_image: vk::Image, format: vk::Format, mip_levels: u32) -> vk::ImageView {
+        Self::create_image_view(&crate::get_device(), texture_image, format, vk::ImageAspectFlags::COLOR, mip_levels)
     }
 
     fn create_texture_sampler(&self, _mip_levels: u32) -> vk::Sampler {

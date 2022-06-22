@@ -24,7 +24,7 @@ void main() {
     gl_Position = vec4(
         inPosition.x * constants.stretch_x + constants.x,
         inPosition.y * constants.stretch_y + constants.y,
-        0.5,
+        inPosition.x / 10000.0,
         1.0
     );
     outTexCoord = inTexCoord;

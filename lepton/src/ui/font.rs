@@ -1,6 +1,8 @@
 use std::rc::Rc;
 use std::path::Path;
 use ash::vk;
+use std::fs::File;
+use std::io::prelude::*;
 
 use crate::Graphics;
 use crate::model::{Model, VertexType, TextureType, primitives::Vertex2Tex};
@@ -8,10 +10,12 @@ use crate::shader::{Shader, builtin};
 
 const N_COLS: usize = 12;
 const N_ROWS: usize = 8;
+const N_CHARS: usize = N_COLS * N_ROWS;
 
 
 pub struct Font {
     pub(crate) model: Model,
+    kerns: Vec<f32>,
     screen_width: f32,
     screen_height: f32,
     letter_width: f32,
@@ -55,9 +59,29 @@ impl Font {
         }
 
         let model = Model::new::<builtin::UISignature>(graphics, shader, VertexType::Specified2Tex(vertices, indices),
-            TextureType::Path(&Path::new(&format!("assets/fonts/rendered/{}-{}.png", font_name, size)))).expect("Could not find font");
+            TextureType::Monochrome(&Path::new(&format!("assets/fonts/rendered/{}-{}.png", font_name, size)))).expect("Could not find font");
+
+        let kerns = {
+            let mut file = File::open(&Path::new(&format!("assets/fonts/rendered/{}-{}.dat", font_name, size))).expect("Could not find the kerning file");
+            // read the same file back into a Vec of bytes
+            let mut buffer = Vec::<u8>::with_capacity(N_CHARS * N_CHARS);
+            file.read_to_end(&mut buffer).expect("Could not read kerning file");
+            // Leak the buffer
+            let i8_buffer = unsafe {
+                // Leak buffer
+                let mut buffer = std::mem::ManuallyDrop::new(buffer);
+                Vec::from_raw_parts(
+                    buffer.as_mut_ptr() as *mut i8,
+                    buffer.len(),
+                    buffer.capacity()
+                )
+            };
+            i8_buffer.iter().map(|x| *x as f32 / graphics.window_width as f32 * 2.0).collect::<Vec<_>>()
+        };
+
         Self {
             model: Rc::try_unwrap(model).unwrap(),
+            kerns,
             screen_width: graphics.window_width as f32,
             screen_height: graphics.window_height as f32,
             letter_width: standard_width,
@@ -67,9 +91,15 @@ impl Font {
 
     pub fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
         text: &str, mut x: f32, y: f32) {
+            let mut last_char = None;
             for letter in text.chars() {
+                if let Some(left) = last_char {
+                    let kern = self.kerns[(left as usize - 32) * N_CHARS + letter as usize - 32];
+                    x += kern;
+                }
                 self.render_char(pipeline_layout, command_buffer, frame_index, letter, x, y);
                 x += self.letter_width;
+                last_char = Some(letter);
             }
         }
 

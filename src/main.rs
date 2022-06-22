@@ -38,7 +38,7 @@ impl Starfarer {
         let physics = Physics::new();
 
         let ship_model = Model::new::<builtin::TextureShader>(graphics, &model_shader,
-            VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Path(&Path::new(TEXTURE_PATH)))
+            VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Transparency(&Path::new(TEXTURE_PATH)))
             .expect("Model creation failed");
 
         let mut docking_port = Object::new(Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));

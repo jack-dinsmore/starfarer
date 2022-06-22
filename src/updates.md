@@ -57,9 +57,12 @@ Rendering text and drew FPS to screen.
 
 Automatic font file creation
 
+## June 21
+
+Text kerning and single-channel font textures
+
 ## To do:
 
-- Text kerning and single-channel font textures
 - More UI abilities (including escape menu and clicking buttons)
 - Resolve ////
 - Rigid bodies
