@@ -14,6 +14,7 @@ layout (push_constant) uniform UIPushConstants {
     float stretch_x;
     float stretch_y;
     vec4 color;
+    float depth;
 } constants;
 
 out gl_PerVertex {
@@ -24,7 +25,7 @@ void main() {
     gl_Position = vec4(
         inPosition.x * constants.stretch_x + constants.x,
         inPosition.y * constants.stretch_y + constants.y,
-        inPosition.x / 10000.0,
+        constants.depth,
         1.0
     );
     outTexCoord = inTexCoord;

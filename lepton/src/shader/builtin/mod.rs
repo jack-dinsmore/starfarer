@@ -17,6 +17,7 @@ pub struct UIPushConstants {
     pub stretch_x: f32,
     pub stretch_y: f32,
     pub color: [f32; 4],
+    pub depth: f32,
 }
 
 

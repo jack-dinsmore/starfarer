@@ -10,6 +10,7 @@ layout (push_constant) uniform UIPushConstants {
     float stretch_x;
     float stretch_y;
     vec4 color;
+    float depth;
 } constants;
 
 layout (location = 1) in vec2 texCoord;

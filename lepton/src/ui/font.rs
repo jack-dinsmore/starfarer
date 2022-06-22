@@ -11,6 +11,7 @@ use crate::shader::{Shader, builtin};
 const N_COLS: usize = 12;
 const N_ROWS: usize = 8;
 const N_CHARS: usize = N_COLS * N_ROWS;
+const NUM_OPERATIONS: f32 = 0xffff as f32;
 
 
 pub struct Font {
@@ -90,21 +91,22 @@ impl Font {
     }
 
     pub fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
-        text: &str, mut x: f32, y: f32) {
+        text: &str, mut x: f32, y: f32, operation_index: &mut u32) {
             let mut last_char = None;
             for letter in text.chars() {
                 if let Some(left) = last_char {
                     let kern = self.kerns[(left as usize - 32) * N_CHARS + letter as usize - 32];
                     x += kern;
                 }
-                self.render_char(pipeline_layout, command_buffer, frame_index, letter, x, y);
+                self.render_char(pipeline_layout, command_buffer, frame_index, letter, x, y, *operation_index);
                 x += self.letter_width;
                 last_char = Some(letter);
+                *operation_index += 1
             }
         }
 
     fn render_char(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
-        letter: char, x: f32, y: f32) {
+        letter: char, x: f32, y: f32, operation_index: u32) {
         if (letter as usize) < 32 || (letter as usize) >= 128 {
             return;
         }
@@ -116,6 +118,7 @@ impl Font {
             stretch_x: 1.0,
             stretch_y: 1.0,
             color: [0.0, 0.0, 0.0, 1.0],
+            depth: 0.5 - operation_index as f32 / NUM_OPERATIONS / 2.0,
         };
         let push_constant_bytes = unsafe { crate::tools::struct_as_bytes(&push_constants) };
         self.model.render_some(pipeline_layout, command_buffer, frame_index, Some(push_constant_bytes), index, 6);

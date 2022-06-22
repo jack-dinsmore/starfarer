@@ -46,6 +46,7 @@ impl UserInterface {
     }
 
     pub fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, buffer_index: usize) {
-        self.font.render(pipeline_layout, command_buffer, buffer_index, &format!("FPS: {}", self.fps), -1.0, -1.0);
+        let mut operation_index = 0;
+        self.font.render(pipeline_layout, command_buffer, buffer_index, &format!("FPS: {}", self.fps), -1.0, -1.0, &mut operation_index);
     }
 }
