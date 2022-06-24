@@ -7,13 +7,14 @@ pub mod builtin;
 use ash::vk;
 use std::ptr;
 use std::ffi::CString;
+use std::marker::PhantomData;
 
 pub use camera::*;
 pub use lights::*;
 pub use object::*;
 pub use input::{Input, InputType};
 use crate::Graphics;
-use crate::model::primitives::Vertex;
+use crate::model::vertex::Vertex;
 
 pub struct ShaderStages {
     f: u32,
@@ -57,14 +58,25 @@ pub trait Signature {
     
 }
 
-pub struct Shader {
+pub struct Shader<S: Signature> {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) pipeline_layout: vk::PipelineLayout,
     pub(crate) ubo_layout: vk::DescriptorSetLayout,
+    phantom: PhantomData<S>,
 }
 
-impl Shader {
-    pub fn new<S: Signature>(graphics: &mut Graphics) -> Self {
+pub trait ShaderTrait {
+    fn get_pipeline(&self) -> vk::Pipeline;
+    fn get_pipeline_layout(&self) -> vk::PipelineLayout;
+}
+
+impl<S: Signature> ShaderTrait for Shader<S> {
+    fn get_pipeline(&self) -> vk::Pipeline { self.pipeline }
+    fn get_pipeline_layout(&self) -> vk::PipelineLayout { self.pipeline_layout}
+}
+
+impl<S: Signature> Shader<S> {
+    pub fn new(graphics: &mut Graphics) -> Self {
         let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
         let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
 
@@ -106,10 +118,11 @@ impl Shader {
             pipeline,
             pipeline_layout,
             ubo_layout,
+            phantom: PhantomData,
         }
     }
 
-    pub(crate) fn reload<S: Signature>(&mut self, graphics: &Graphics) {
+    pub(crate) fn reload(&mut self, graphics: &Graphics) {
         //let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
         //let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
         let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
@@ -154,7 +167,7 @@ impl Shader {
     }
 }
 
-impl Drop for Shader {
+impl<S: Signature> Drop for Shader<S> {
     fn drop(&mut self) {
         unsafe {
             if let Some(device) = &crate::DEVICE {

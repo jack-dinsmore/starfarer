@@ -3,12 +3,14 @@ use ash::vk;
 use std::path::Path;
 use std::ptr;
 use std::cmp::max;
-use std::rc::Rc;
 
-pub mod primitives;
-use primitives::*;
+pub mod vertex;
+use vertex::*;
 use crate::{Graphics};
 use crate::shader::{Shader, Signature};
+
+const BLANK_WIDTH: u32 = 4;
+const BLANK_HEIGHT: u32 = 4;
 
 #[derive(Debug)]
 pub struct Model {
@@ -27,10 +29,8 @@ pub struct Model {
     descriptor_sets: Vec<vk::DescriptorSet>,
 }
 
-pub enum VertexType<'a> {
-    SpecifiedModel(Vec<VertexModel>, Vec<u32>),
-    Specified3Tex(Vec<Vertex3Tex>, Vec<u32>),
-    Specified2Tex(Vec<Vertex2Tex>, Vec<u32>),
+pub enum VertexType<'a, V: Vertex> {
+    Specified(Vec<V>, Vec<u32>),
     Path(&'a Path),
 }
 
@@ -38,31 +38,25 @@ pub enum TextureType<'a> {
     Mipmap(&'a Path),
     Transparency(&'a Path),
     Monochrome(&'a Path),
+    Blank,
 }
 
 // Constructors
 impl Model {
-    pub fn new<'a, S: Signature>(graphics: &Graphics, shader: &Shader, vertex_type: VertexType<'a>, texture_type: TextureType<'a>) -> Result<Rc<Self>> {
+    pub fn new<'a, V: Vertex, S: Signature>(graphics: &Graphics, shader: &Shader<S>, vertex_type: VertexType<'a, V>, texture_type: TextureType<'a>) -> Result<Self> {
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (path, format, mipmap) = match texture_type {
-            TextureType::Mipmap(p) => (p, vk::Format::R8G8B8A8_SRGB, true),
-            TextureType::Transparency(p) => (p, vk::Format::R8G8B8A8_SRGB, false),
-            TextureType::Monochrome(p) => (p, vk::Format::R8_SRGB, false),
+            TextureType::Mipmap(p) => (Some(p), vk::Format::R8G8B8A8_SRGB, true),
+            TextureType::Transparency(p) => (Some(p), vk::Format::R8G8B8A8_SRGB, false),
+            TextureType::Monochrome(p) => (Some(p), vk::Format::R8_SRGB, false),
+            TextureType::Blank => (None, vk::Format::R8_SRGB, false),
         };
-        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image_from_path(path, format, mipmap);
+        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image(path, format, mipmap);
         let texture_image_view = graphics.create_texture_image_view(texture_image, format, mip_levels);
         let texture_sampler = graphics.create_texture_sampler(mip_levels);
 
         let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
-            VertexType::SpecifiedModel(v, i) => {
-                (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
-            },
-            VertexType::Specified3Tex(v, i) => {
-                (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
-            },
-            VertexType::Specified2Tex(v, i) => {
-                (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32)
-            },
+            VertexType::Specified(v, i) => (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32),
             VertexType::Path(p) => {
                 let (vertices, indices) = Self::get_data_from_model(p)?;
                 (graphics.create_vertex_buffer(&vertices), graphics.create_index_buffer(&indices), indices.len() as u32)
@@ -87,7 +81,7 @@ impl Model {
             descriptor_sets,
         };
 
-        Ok(Rc::new(model))
+        Ok(model)
     }
 }
 
@@ -199,15 +193,25 @@ impl Graphics {
         }
     }
 
-    fn create_texture_image_from_path(&self, texture_path: &Path, format: vk::Format, mipmap: bool) -> (vk::Image, vk::DeviceMemory, u32) {
-        let mut image_object = image::open(texture_path).unwrap(); // this function is slow in debug mode.
-        image_object = image_object.flipv();
-        let (image_width, image_height) = (image_object.width(), image_object.height());
-        let (image_data, word_width) = match format {
-            vk::Format::R8G8B8A8_SRGB => (image_object.to_rgba8().into_raw(), 4),
-            vk::Format::R8_SRGB => (image_object.to_luma8().into_raw(), 1),
-            _ => panic!("Image format {:?} is not supported.", format)
+    fn create_texture_image(&self, texture_path: Option<&Path>, format: vk::Format, mipmap: bool) -> (vk::Image, vk::DeviceMemory, u32) {
+        let (image_width, image_height, image_data, word_width) =  match texture_path {
+            Some(path) => {
+                let mut image_object = image::open(path).unwrap(); // this function is slow in debug mode.
+                image_object = image_object.flipv();
+                let (image_width, image_height) = (image_object.width(), image_object.height());
+                let (image_data, word_width) = match format {
+                    vk::Format::R8G8B8A8_SRGB => (image_object.to_rgba8().into_raw(), 4),
+                    vk::Format::R8_SRGB => (image_object.to_luma8().into_raw(), 1),
+                    _ => panic!("Image format {:?} is not supported.", format)
+                };
+                (image_width, image_height, image_data, word_width)
+            },
+            None => {
+                assert_eq!(vk::Format::R8_SRGB, format);
+                (BLANK_WIDTH, BLANK_HEIGHT, vec![255; BLANK_WIDTH as usize * BLANK_HEIGHT as usize], 1)
+            }
         };
+        
         let image_size =
             (::std::mem::size_of::<u8>() as u32 * image_width * image_height * word_width) as vk::DeviceSize;
         let mip_levels = match mipmap {
@@ -389,7 +393,7 @@ impl Graphics {
         (index_buffer, index_buffer_memory)
     }
 
-    fn create_descriptor_sets<S: Signature>(&self, shader: &Shader, texture_image_view: vk::ImageView,
+    fn create_descriptor_sets<S: Signature>(&self, shader: &Shader<S>, texture_image_view: vk::ImageView,
         texture_sampler: vk::Sampler) -> Vec<vk::DescriptorSet> {
 
         let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];

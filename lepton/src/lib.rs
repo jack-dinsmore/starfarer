@@ -31,9 +31,9 @@ pub mod prelude {
     pub use crate::{Lepton, Graphics, Control, Pattern, KeyTracker, VirtualKeyCode, RenderData,
         Action,
         physics::Physics,
-        model::{Model, TextureType, VertexType},
+        model::{Model, TextureType, VertexType, vertex},
         shader::{InputType, Shader, Camera, Lights, LightFeatures, Object, builtin},
-        ui::{UserInterface},
+        ui::{UserInterface, Element, Font},
     };
 }
 

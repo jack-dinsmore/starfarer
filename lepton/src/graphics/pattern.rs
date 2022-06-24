@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
-use crate::shader::{Shader, Object};
+use crate::shader::{Shader, ShaderTrait, Object, Signature};
 use crate::RenderData;
 use crate::model::Model;
 use crate::ui::UserInterface;
@@ -15,9 +15,9 @@ pub struct Pattern {
 
 pub enum Action<'a> {
     DrawObject(&'a mut Object),
-    LoadShader(&'a Shader),
+    LoadShader(&'a dyn ShaderTrait),
     DrawModel(&'a Rc<Model>),
-    DrawUI(&'a UserInterface),
+    DrawUI(&'a dyn UserInterface),
 }
 
 impl Pattern {
@@ -51,29 +51,29 @@ impl Pattern {
         }
 
         graphics.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
-        let mut shader_up = None;
+        let mut pipeline_layout = None;
 
         for action in actions.iter_mut() {
             match action {
                 Action::LoadShader(s) => {
                     unsafe { crate::get_device().cmd_bind_pipeline(self.command_buffers[buffer_index],
-                        vk::PipelineBindPoint::GRAPHICS, s.pipeline); }
-                    shader_up = Some(s);
+                        vk::PipelineBindPoint::GRAPHICS, s.get_pipeline()); }
+                        pipeline_layout = Some(s.get_pipeline_layout());
                 },
                 Action::DrawObject(o) => {
                     o.make_push_constants();
                     if let Some(ref m) = o.model {
-                        m.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
+                        m.render(pipeline_layout.expect("You must first load a shader"),
                             self.command_buffers[buffer_index], buffer_index, Some(o.get_push_constant_bytes()));
                     }
                 },
                 Action::DrawModel(m) => {
-                    m.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout,
+                    m.render(pipeline_layout.expect("You must first load a shader"),
                         self.command_buffers[buffer_index], buffer_index, None);
                 },
                 Action::DrawUI(u) => {
-                    u.render(shader_up.as_ref().expect("No shader has been loaded").pipeline_layout, 
-                        self.command_buffers[buffer_index], buffer_index)
+                    crate::ui::render_user_interface(*u, pipeline_layout.expect("You must first load a shader"), 
+                        self.command_buffers[buffer_index], buffer_index);
                 }
             }
         }

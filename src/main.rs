@@ -1,4 +1,7 @@
+mod menus;
+
 use std::path::Path;
+use std::rc::Rc;
 
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Quaternion, Point3};
@@ -11,35 +14,39 @@ const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.003;
 
 struct Starfarer {
-    model_shader: Shader,
-    ui_shader: Shader,
+    model_shader: Shader<builtin::ModelSignature>,
+    ui_shader: Shader<builtin::UISignature>,
     pattern: Pattern,
 
     camera: Camera,
     lights: Lights,
-    ui: UserInterface,
     key_tracker: KeyTracker,
     physics: Physics,
 
     docking_port: Object,
     docking_port2: Object,
     sun: Object,
+
+    fps_menu: menus::FPS,
+    escape_menu: menus::Escape,
 }
 
 impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
         let pattern = Pattern::new(graphics);
-        let model_shader = Shader::new::<builtin::TextureShader>(graphics);
-        let ui_shader = Shader::new::<builtin::UISignature>(graphics);
+        let model_shader = Shader::new(graphics);
+        let ui_shader = Shader::new(graphics);
         let camera = Camera::new(graphics, Point3::new(2.0, 0.0, 1.0));
         let mut lights = Lights::new(graphics);
-        let ui = UserInterface::new(graphics, &ui_shader);
+        let menu_common = menus::Common::new(graphics, &ui_shader);
+        let fps_menu = menus::FPS::new(&menu_common);
+        let escape_menu = menus::Escape::new(&menu_common);
         
         let physics = Physics::new();
 
-        let ship_model = Model::new::<builtin::TextureShader>(graphics, &model_shader,
-            VertexType::Path(&Path::new(MODEL_PATH)), TextureType::Transparency(&Path::new(TEXTURE_PATH)))
-            .expect("Model creation failed");
+        let ship_model = Rc::new(Model::new(graphics, &model_shader,
+            VertexType::<vertex::VertexModel>::Path(&Path::new(MODEL_PATH)), TextureType::Transparency(&Path::new(TEXTURE_PATH)))
+            .expect("Model creation failed"));
 
         let mut docking_port = Object::new(Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
         let mut docking_port2 = Object::new(Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
@@ -55,7 +62,8 @@ impl Starfarer {
             pattern,
             camera,
             lights,
-            ui,
+            fps_menu,
+            escape_menu,
             key_tracker: KeyTracker::new(),
             physics,
             docking_port,
@@ -79,7 +87,7 @@ impl Lepton for Starfarer {
         self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * delta_time as f64);
         self.docking_port2.set_pos(self.docking_port2.pos - Vector3::unit_y() * delta_time as f64);
 
-        self.ui.update(delta_time);
+        self.fps_menu.update(delta_time);
     }
     
     fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData) {
@@ -88,14 +96,20 @@ impl Lepton for Starfarer {
         self.camera.update_input(render_data.buffer_index);
         self.lights.update_input(render_data.buffer_index);
 
-        // Record
-        self.pattern.record(graphics, render_data.buffer_index, &mut vec![
+        let mut actions = vec![
             Action::LoadShader(&self.model_shader),
             Action::DrawObject(&mut self.docking_port),
             Action::DrawObject(&mut self.docking_port2),
             Action::LoadShader(&mut self.ui_shader),
-            Action::DrawUI(&self.ui),
-        ]);
+            Action::DrawUI(&self.fps_menu),
+        ];
+
+        if self.escape_menu.is_open {
+            actions.push(Action::DrawUI(&self.escape_menu));
+        }
+
+        // Record
+        self.pattern.record(graphics, render_data.buffer_index, &mut actions);
 
         // Actually render
         self.pattern.render(render_data);
@@ -104,7 +118,10 @@ impl Lepton for Starfarer {
     fn keydown(&mut self, vk: VirtualKeyCode) -> bool {
         self.key_tracker.keydown(vk);
         if let VirtualKeyCode::Escape = vk {
-            return true;
+            if self.escape_menu.is_open {
+                return true;
+            }
+            self.escape_menu.is_open = true;
         }
         false
     }

@@ -21,9 +21,9 @@ pub struct UIPushConstants {
 }
 
 
-pub struct TextureShader;
-impl shader::Signature for TextureShader {
-    type V = model::primitives::VertexModel;
+pub struct ModelSignature;
+impl shader::Signature for ModelSignature {
+    type V = model::vertex::VertexModel;
     type PushConstants = ObjectPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.frag", kind: frag);
@@ -35,7 +35,7 @@ impl shader::Signature for TextureShader {
 
 pub struct UISignature;
 impl shader::Signature for UISignature {
-    type V = model::primitives::Vertex2Tex;
+    type V = model::vertex::Vertex2Tex;
     type PushConstants = UIPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.frag", kind: frag);

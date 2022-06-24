@@ -5,14 +5,12 @@ use std::fs::File;
 use std::io::prelude::*;
 
 use crate::Graphics;
-use crate::model::{Model, VertexType, TextureType, primitives::Vertex2Tex};
+use crate::model::{Model, VertexType, TextureType, vertex::Vertex2Tex};
 use crate::shader::{Shader, builtin};
 
 const N_COLS: usize = 12;
 const N_ROWS: usize = 8;
 const N_CHARS: usize = N_COLS * N_ROWS;
-const NUM_OPERATIONS: f32 = 0xffff as f32;
-
 
 pub struct Font {
     pub(crate) model: Model,
@@ -24,7 +22,7 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(graphics: &Graphics, shader: &Shader, font_name: &str, size: usize) -> Font {
+    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, font_name: &str, size: usize) -> Font {
         let standard_width = size as f32 / graphics.window_width as f32 * 2.0;
         let standard_height = size as f32 / graphics.window_height as f32 * 2.0;
 
@@ -59,7 +57,7 @@ impl Font {
             }
         }
 
-        let model = Model::new::<builtin::UISignature>(graphics, shader, VertexType::Specified2Tex(vertices, indices),
+        let model = Model::new(graphics, shader, VertexType::Specified(vertices, indices),
             TextureType::Monochrome(&Path::new(&format!("assets/fonts/rendered/{}-{}.png", font_name, size)))).expect("Could not find font");
 
         let kerns = {
@@ -81,7 +79,7 @@ impl Font {
         };
 
         Self {
-            model: Rc::try_unwrap(model).unwrap(),
+            model,
             kerns,
             screen_width: graphics.window_width as f32,
             screen_height: graphics.window_height as f32,
@@ -90,20 +88,40 @@ impl Font {
         }
     }
 
-    pub fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
+    pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
         text: &str, mut x: f32, y: f32, operation_index: &mut u32) {
-            let mut last_char = None;
-            for letter in text.chars() {
-                if let Some(left) = last_char {
-                    let kern = self.kerns[(left as usize - 32) * N_CHARS + letter as usize - 32];
-                    x += kern;
-                }
-                self.render_char(pipeline_layout, command_buffer, frame_index, letter, x, y, *operation_index);
-                x += self.letter_width;
-                last_char = Some(letter);
-                *operation_index += 1
+
+        let mut last_char = None;
+        for letter in text.chars() {
+            if let Some(left) = last_char {
+                let kern = self.kerns[(left as usize - 32) * N_CHARS + letter as usize - 32];
+                x += kern;
             }
+            self.render_char(pipeline_layout, command_buffer, frame_index, letter, x, y, *operation_index);
+            x += self.letter_width;
+            last_char = Some(letter);
+            *operation_index += 1
         }
+    }
+
+    pub fn length(&self, text: &str) -> f32{
+        let mut x = 0.0;
+        let mut last_char = None;
+        for letter in text.chars() {
+            if let Some(left) = last_char {
+                let kern = self.kerns[(left as usize - 32) * N_CHARS + letter as usize - 32];
+                x += kern;
+            }
+            x += self.letter_width;
+            last_char = Some(letter);
+        }
+
+        x
+    }
+
+    pub fn height(&self) -> f32 {
+        self.letter_height
+    }
 
     fn render_char(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
         letter: char, x: f32, y: f32, operation_index: u32) {
@@ -118,7 +136,7 @@ impl Font {
             stretch_x: 1.0,
             stretch_y: 1.0,
             color: [0.0, 0.0, 0.0, 1.0],
-            depth: 0.5 - operation_index as f32 / NUM_OPERATIONS / 2.0,
+            depth: 0.5 - operation_index as f32 / super::NUM_OPERATIONS / 2.0,
         };
         let push_constant_bytes = unsafe { crate::tools::struct_as_bytes(&push_constants) };
         self.model.render_some(pipeline_layout, command_buffer, frame_index, Some(push_constant_bytes), index, 6);
