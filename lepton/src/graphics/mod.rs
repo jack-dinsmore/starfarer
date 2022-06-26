@@ -66,6 +66,7 @@ pub struct Graphics {
     pub(crate) swapchain_ideal_version: u32,
     pub(crate) window_width: u32,
     pub(crate) window_height: u32,
+    pub(crate) mouse_position: (f32, f32),
     input_types: Vec<shader::InputType>,
 }
 
@@ -180,6 +181,7 @@ impl Graphics {
             window_width,
             window_height,
             input_types,
+            mouse_position: (0.0, 0.0),
         }
     }
 
@@ -429,8 +431,12 @@ impl Graphics {
         (buffer, buffer_memory)
     }
 
-    pub(crate) fn center_cursor(&self) {
+    pub fn center_cursor(&self) {
         self.window.set_cursor_position(winit::dpi::PhysicalPosition{ x: self.window_width / 2, y: self.window_height / 2}).expect("Could not set cursor pos)");
+    }
+
+    pub fn set_cursor_visible(&self, visible: bool) {
+        self.window.set_cursor_visible(visible);
     }
 }
 

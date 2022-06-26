@@ -4,16 +4,18 @@ mod fonts {
     use std::path::Path;
     use std::io::prelude::*;
 
+    const FONT_PATH: &'static str = "../assets/fonts/";
+
     const FONTS: &'static [(&'static str, usize)] = &[
-        ("../assets/fonts/Roboto-Regular.ttf", 48)
+        ("NunitoSans/NunitoSans-Bold.ttf", 24),
     ];
     const N_ROWS: usize = 8;
     const N_COLS: usize = 12;
     const N_CHARS: usize = N_ROWS * N_COLS;
 
     fn load_font(font_path: &str, size: usize) {
-        let font_path = Path::new(font_path);
-        let mut f = File::open(font_path).expect("No file found");
+        let font_path = Path::new(FONT_PATH).join(font_path);
+        let mut f = File::open(&font_path).expect("No file found");
         let metadata = fs::metadata(&font_path).expect("Unable to read metadata");
         let mut buffer = vec![0; metadata.len() as usize];
         f.read(&mut buffer).expect("buffer overflow");
@@ -74,7 +76,7 @@ mod fonts {
             }
         }
         let stem = font_path.file_stem().expect("No filename").to_str().expect("Invalid filename");
-        let mut kern_file = File::create(font_path.parent().unwrap().join(format!("rendered/{}-{}.dat", stem, size))).unwrap();
+        let mut kern_file = File::create(Path::new(FONT_PATH).join(format!("rendered/{}-{}.dat", stem, size))).unwrap();
         let kern_bytes = unsafe {
             std::slice::from_raw_parts(
                 kern_array.as_mut_ptr() as *mut u8,
@@ -85,7 +87,7 @@ mod fonts {
 
         // Write image
         image::save_buffer(
-            font_path.parent().unwrap().join(format!("rendered/{}-{}.png", stem, size)),
+            Path::new(FONT_PATH).join(format!("rendered/{}-{}.png", stem, size)),
             &buffer,
             image_width as u32,
             image_height as u32,

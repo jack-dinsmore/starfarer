@@ -29,6 +29,12 @@ impl Control {
                 }
                 | Event::WindowEvent { event, ..} => {
                     match event {
+                        | WindowEvent::CursorMoved {position, ..} => {
+                            graphics.mouse_position = (
+                                position.x as f32 / graphics.window_width as f32 * 2.0 - 1.0,
+                                position.y as f32 / graphics.window_height as f32 * 2.0 - 1.0
+                            );
+                        }
                         | WindowEvent::CloseRequested => {
                             graphics.terminate();
                             *control_flow = ControlFlow::Exit
@@ -39,21 +45,23 @@ impl Control {
                                     match state {
                                         ElementState::Pressed =>
                                             if let Some(vk) = virtual_keycode{
-                                                if lepton.keydown(vk) {
-                                                    graphics.terminate();
-                                                    *control_flow = ControlFlow::Exit
-                                                }
+                                                lepton.key_down(vk);
                                             },
                                         ElementState::Released =>
                                             if let Some(vk) = virtual_keycode{
-                                                if lepton.keyup(vk) {
-                                                    graphics.terminate();
-                                                    *control_flow = ControlFlow::Exit
-                                                }
+                                                lepton.key_up(vk);
                                             },
                                     }
                                     
                                 },
+                            }
+                        },
+                        | WindowEvent::MouseInput { state, button, .. } => {
+                            match state {
+                                ElementState::Pressed => {
+                                    lepton.mouse_down(graphics.mouse_position, button);
+                                }
+                                ElementState::Released => ()
                             }
                         },
                         | WindowEvent::Resized(new_size) => {
@@ -84,6 +92,11 @@ impl Control {
                     graphics.terminate();
                 },
                 _ => (),
+            };
+
+            if lepton.should_quit() {
+                graphics.terminate();
+                *control_flow = ControlFlow::Exit;
             }
         });
     }
@@ -102,7 +115,7 @@ impl KeyTracker {
         }
     }
 
-    pub fn keydown(&mut self, vk: winit::event::VirtualKeyCode) {
+    pub fn key_down(&mut self, vk: winit::event::VirtualKeyCode) {
         if (vk as u32) < 128 {
             self.low_mask |= 1 << (vk as u32);
         } else {
@@ -110,7 +123,7 @@ impl KeyTracker {
         }
     }
 
-    pub fn keyup(&mut self, vk: winit::event::VirtualKeyCode) {
+    pub fn key_up(&mut self, vk: winit::event::VirtualKeyCode) {
         if (vk as u32) < 128 {
             self.low_mask &= !(1 << (vk as u32));
         } else {

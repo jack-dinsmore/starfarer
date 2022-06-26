@@ -61,8 +61,11 @@ Automatic font file creation
 
 Text kerning and single-channel font textures
 
+## June 26
+
+Finished HUD and button pressing
+
 ## To do:
 
-- More UI abilities (including escape menu and clicking buttons)
 - Resolve ////
 - Rigid bodies

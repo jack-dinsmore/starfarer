@@ -27,8 +27,9 @@ struct Starfarer {
     docking_port2: Object,
     sun: Object,
 
-    fps_menu: menus::FPS,
-    escape_menu: menus::Escape,
+    fps_menu: UserInterface<menus::FPS>,
+    escape_menu: UserInterface<menus::Escape>,
+    set_cursor_visible: bool,
 }
 
 impl Starfarer {
@@ -69,6 +70,7 @@ impl Starfarer {
             docking_port,
             docking_port2,
             sun,
+            set_cursor_visible: false,
         }
     }
 }
@@ -87,10 +89,13 @@ impl Lepton for Starfarer {
         self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * delta_time as f64);
         self.docking_port2.set_pos(self.docking_port2.pos - Vector3::unit_y() * delta_time as f64);
 
-        self.fps_menu.update(delta_time);
+        self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
     }
     
     fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData) {
+        if self.set_cursor_visible {
+            graphics.set_cursor_visible(self.escape_menu.data.is_open);
+        }
         // Update inputs
         self.docking_port.update_light(&mut self.lights, None);
         self.camera.update_input(render_data.buffer_index);
@@ -104,7 +109,7 @@ impl Lepton for Starfarer {
             Action::DrawUI(&self.fps_menu),
         ];
 
-        if self.escape_menu.is_open {
+        if self.escape_menu.data.is_open {
             actions.push(Action::DrawUI(&self.escape_menu));
         }
 
@@ -115,25 +120,38 @@ impl Lepton for Starfarer {
         self.pattern.render(render_data);
     }
     
-    fn keydown(&mut self, vk: VirtualKeyCode) -> bool {
-        self.key_tracker.keydown(vk);
+    fn key_down(&mut self, vk: VirtualKeyCode) {
+        self.key_tracker.key_down(vk);
         if let VirtualKeyCode::Escape = vk {
-            if self.escape_menu.is_open {
-                return true;
+            if self.escape_menu.data.is_open {
+                self.escape_menu.data.quit = true;
             }
-            self.escape_menu.is_open = true;
+            self.escape_menu.data.is_open = true;
+            self.set_cursor_visible = true;
         }
-        false
     }
     
-    fn keyup(&mut self, vk: VirtualKeyCode) -> bool {
-        self.key_tracker.keyup(vk);
-        false
+    fn key_up(&mut self, vk: VirtualKeyCode) {
+        self.key_tracker.key_up(vk);
     }
 
     fn mouse_motion(&mut self, delta: (f64, f64)) -> bool {
-        self.camera.turn(-delta.1 as f32 * SENSITIVITY, -delta.0 as f32 * SENSITIVITY);
-        true
+        if !self.escape_menu.data.is_open {
+            self.camera.turn(-delta.1 as f32 * SENSITIVITY, -delta.0 as f32 * SENSITIVITY);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn mouse_down(&mut self, position: (f32, f32), _button: MouseButton) {
+        if self.escape_menu.data.is_open {
+            self.escape_menu.mouse_down(position)
+        }
+    }
+
+    fn should_quit(&self) -> bool {
+        self.escape_menu.data.quit
     }
 }
 
@@ -146,7 +164,7 @@ impl Drop for Starfarer {
 fn main() {
     let control = Control::new();
     let mut graphics = Graphics::new(&control, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true,
-        vec![InputType::Camera, InputType::Lights], 2);
+        vec![InputType::Camera, InputType::Lights, InputType::UI], 3);
     
     let starfarer = Starfarer::new(&mut graphics);
     

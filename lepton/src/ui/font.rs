@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::path::Path;
 use ash::vk;
 use std::fs::File;
@@ -22,7 +21,7 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, font_name: &str, size: usize) -> Font {
+    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, font_name: &str, size: usize, spacing: i8) -> Font {
         let standard_width = size as f32 / graphics.window_width as f32 * 2.0;
         let standard_height = size as f32 / graphics.window_height as f32 * 2.0;
 
@@ -75,7 +74,7 @@ impl Font {
                     buffer.capacity()
                 )
             };
-            i8_buffer.iter().map(|x| *x as f32 / graphics.window_width as f32 * 2.0).collect::<Vec<_>>()
+            i8_buffer.iter().map(|x| (*x + spacing) as f32 / graphics.window_width as f32 * 2.0).collect::<Vec<_>>()
         };
 
         Self {

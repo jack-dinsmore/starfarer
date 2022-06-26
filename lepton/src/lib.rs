@@ -10,7 +10,7 @@ mod fps_limiter;
 
 pub use graphics::*;
 pub use control::*;
-pub use winit::event::VirtualKeyCode;
+pub use winit::event::{VirtualKeyCode, MouseButton};
 
 /// A module to contain all of the constants which are set within the crate.
 mod constants {
@@ -29,21 +29,23 @@ mod constants {
 
 pub mod prelude {
     pub use crate::{Lepton, Graphics, Control, Pattern, KeyTracker, VirtualKeyCode, RenderData,
-        Action,
+        Action, MouseButton,
         physics::Physics,
         model::{Model, TextureType, VertexType, vertex},
         shader::{InputType, Shader, Camera, Lights, LightFeatures, Object, builtin},
-        ui::{UserInterface, Element, Font},
+        ui::{UserInterface, Element, ElementData, Font},
     };
 }
 
 /// A user-end trait which enables rendering and response to key presses
 pub trait Lepton: 'static {
     /// Respond to a key press. Returns true if the program is to exit.
-    fn keydown(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
+    fn key_down(&mut self, _keycode: winit::event::VirtualKeyCode) {}
 
-    /// Respond to a key release. Returns true if the program is to exit.
-    fn keyup(&mut self, _keycode: winit::event::VirtualKeyCode) -> bool {false}
+    fn mouse_down(&mut self, _position: (f32, f32), _button: MouseButton) {}
+
+    /// Respond to a key release
+    fn key_up(&mut self, _keycode: winit::event::VirtualKeyCode) {}
 
     /// Respond to mouse motion. True if the mouse pointer is to be reset to the center.
     fn mouse_motion(&mut self, _delta: (f64, f64)) -> bool {false}
@@ -59,5 +61,8 @@ pub trait Lepton: 'static {
     /// Called only on window resize. Record any static patterns again. There is no need to 
     /// record patterns that are recorded every frame, hence why this function is initially empty.
     fn resize(&mut self, _graphics: &Graphics) {}
+
+    /// Retuns true if the application should quit now.
+    fn should_quit(&self) -> bool {false}
 }
 
