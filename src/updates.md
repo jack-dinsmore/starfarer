@@ -66,6 +66,6 @@ Text kerning and single-channel font textures
 Finished HUD and button pressing
 
 ## To do:
-
-- Resolve ////
 - Rigid bodies
+- Skybox
+- Space ships!

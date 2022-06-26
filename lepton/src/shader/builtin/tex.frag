@@ -31,11 +31,12 @@ void main() {
     for (uint index = 0; index < lights_ubo.num_lights; index++) {
         const vec3 light_source = normalize(lights_ubo.light_pos[index].xyz - worldCoord);
         const vec3 reflection = normalize(2 * dot(light_source, normal) * normal - light_source);
-        illumination +=
+        illumination += lights_ubo.light_features[index].w * (
             lights_ubo.light_features[index].x * max(dot(light_source, normal), 0) + 
-            lights_ubo.light_features[index].y * pow(max(dot(reflection, camera_pos), 0), lights_ubo.light_features[index].z);
+            lights_ubo.light_features[index].y * pow(max(dot(reflection, camera_pos), 0), lights_ubo.light_features[index].z));
     }
 
-    outColor = texture(texSampler, texCoord) * illumination;
+    vec4 standardColor = texture(texSampler, texCoord);
+    outColor = vec4(standardColor.xyz * illumination, standardColor.a);
 }
 

@@ -7,11 +7,12 @@ pub struct LightFeatures {
     pub diffuse_coeff: f32,
     pub specular_coeff: f32,
     pub shininess: u32,
+    pub brightness: f32,
 }
 
 impl LightFeatures {
     pub(crate) fn as_vec(&self) -> Vector4<f32> {
-        Vector4::new(self.diffuse_coeff, self.specular_coeff, self.shininess as f32, 1.0)
+        Vector4::new(self.diffuse_coeff, self.specular_coeff, self.shininess as f32, self.brightness)
     }
 }
 

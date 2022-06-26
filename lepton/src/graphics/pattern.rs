@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::constants::CLEAR_VALUES;
 use crate::Graphics;
-use crate::shader::{Shader, ShaderTrait, Object, Signature};
+use crate::shader::{ShaderTrait, Object};
 use crate::RenderData;
 use crate::model::Model;
 use crate::ui::UserInterfaceTrait;

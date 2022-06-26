@@ -55,7 +55,7 @@ impl Starfarer {
         docking_port2.add_model(ship_model.clone());
 
         let mut sun = Object::new(Vector3::new(5.0, -5.0, 10.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
-        lights.illuminate(&mut sun, LightFeatures { diffuse_coeff: 1.0, specular_coeff: 1.0, shininess: 1});
+        lights.illuminate(&mut sun, LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 2, brightness: 0.1});
 
         Self {
             model_shader,
@@ -86,8 +86,8 @@ impl Lepton for Starfarer {
             camera_adjust *= delta_time / camera_adjust.magnitude();
         }
         self.camera.adjust(camera_adjust);
-        self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * delta_time as f64);
-        self.docking_port2.set_pos(self.docking_port2.pos - Vector3::unit_y() * delta_time as f64);
+        self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * 0.5 * delta_time as f64);
+        self.docking_port2.set_pos(self.docking_port2.pos - Vector3::unit_y() * 0.5 * delta_time as f64);
 
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
     }
@@ -152,12 +152,6 @@ impl Lepton for Starfarer {
 
     fn should_quit(&self) -> bool {
         self.escape_menu.data.quit
-    }
-}
-
-impl Drop for Starfarer {
-    fn drop(&mut self) {
-        println!("Starfarer dropped");
     }
 }
 
