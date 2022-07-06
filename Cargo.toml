@@ -9,9 +9,13 @@ authors = ["jtdinsmo <jtdinsmo@mit.edu>"]
 [workspace]
 
 members = [
-    "lepton"
+    "lepton",
 ]
 
 [dependencies]
 lepton = { path = "lepton" }
 cgmath = "0.18.0"
+byteorder = "1.4.3"
+
+[build-dependencies]
+lepton = { path = "lepton" }

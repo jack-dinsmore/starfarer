@@ -3,9 +3,10 @@ pub mod shader;
 pub mod model;
 pub mod physics;
 pub mod ui;
+pub mod tools;
+pub mod macros;
 mod graphics;
 mod control;
-mod tools;
 mod fps_limiter;
 
 pub use graphics::*;
@@ -65,4 +66,3 @@ pub trait Lepton: 'static {
     /// Retuns true if the application should quit now.
     fn should_quit(&self) -> bool {false}
 }
-

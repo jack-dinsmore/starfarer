@@ -1,6 +1,5 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use ash::vk;
-use std::path::Path;
 use std::ptr;
 use std::cmp::max;
 
@@ -31,34 +30,52 @@ pub struct Model {
 
 pub enum VertexType<'a, V: Vertex> {
     Specified(Vec<V>, Vec<u32>),
-    Path(&'a Path),
+    Compiled(&'a [u8], usize),
+}
+
+impl<'a, V: Vertex> VertexType<'a, V> {
+    fn to_vectors(bytes: &'a [u8], num_indices: usize) -> (Vec<V>, Vec<u32>) {
+        let vertex_bytes = bytes.len() - num_indices * std::mem::size_of::<u32>();
+        unsafe {(
+            std::slice::from_raw_parts((&bytes[0] as *const u8) as *const V,
+                (vertex_bytes / std::mem::size_of::<V>()) as usize).to_vec(),
+            std::slice::from_raw_parts((&bytes[vertex_bytes] as *const u8) as *const u32,
+                num_indices).to_vec()
+        )}
+    }
 }
 
 pub enum TextureType<'a> {
-    Mipmap(&'a Path),
-    Transparency(&'a Path),
-    Monochrome(&'a Path),
+    Mipmap(&'a [u8]),
+    Transparency(&'a [u8]),
+    Monochrome(&'a [u8]),
     Blank,
+}
+
+impl<'a> TextureType<'a> {
+    fn to_image(bytes: &'a [u8]) -> image::DynamicImage {
+        image::load_from_memory(bytes).unwrap()
+    }
 }
 
 // Constructors
 impl Model {
     pub fn new<'a, V: Vertex, S: Signature>(graphics: &Graphics, shader: &Shader<S>, vertex_type: VertexType<'a, V>, texture_type: TextureType<'a>) -> Result<Self> {
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
-        let (path, format, mipmap) = match texture_type {
-            TextureType::Mipmap(p) => (Some(p), vk::Format::R8G8B8A8_SRGB, true),
-            TextureType::Transparency(p) => (Some(p), vk::Format::R8G8B8A8_SRGB, false),
-            TextureType::Monochrome(p) => (Some(p), vk::Format::R8_SRGB, false),
+        let (image, format, mipmap) = match texture_type {
+            TextureType::Mipmap(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, true),
+            TextureType::Transparency(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, false),
+            TextureType::Monochrome(b) => (Some(TextureType::to_image(b)), vk::Format::R8_SRGB, false),
             TextureType::Blank => (None, vk::Format::R8_SRGB, false),
         };
-        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image(path, format, mipmap);
+        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image(image, format, mipmap);
         let texture_image_view = graphics.create_texture_image_view(texture_image, format, mip_levels);
         let texture_sampler = graphics.create_texture_sampler(mip_levels);
 
         let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
             VertexType::Specified(v, i) => (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32),
-            VertexType::Path(p) => {
-                let (vertices, indices) = Self::get_data_from_model(p)?;
+            VertexType::Compiled(b, n) => {
+                let (vertices, indices) = VertexType::<'a, V>::to_vectors(b, n);
                 (graphics.create_vertex_buffer(&vertices), graphics.create_index_buffer(&indices), indices.len() as u32)
             },
         };
@@ -99,47 +116,6 @@ impl Model {
         unsafe {
             crate::get_device().cmd_draw_indexed(command_buffer, count as u32, 1, start_index as u32, 0, 0);
         }
-    }
-
-    fn get_data_from_model(path: &Path) -> Result<(Vec<VertexModel>, Vec<u32>)> {
-        let model_obj = match tobj::load_obj(path, &tobj::LoadOptions{single_index: true, ..Default::default()}) {
-            Ok(m) => m,
-            Err(_) => bail!("Failed to load model object {}", path.display())
-        };
-
-        let mut vertices = vec![];
-        let mut indices = vec![];
-    
-        let (models, _) = model_obj;
-        for m in models.iter() {
-            let mesh = &m.mesh;
-    
-            if mesh.texcoords.len() == 0 {
-                bail!("Missing texture coordinates for model {}", path.display());
-            }
-    
-            let total_vertices_count = mesh.positions.len() / 3;
-            for i in 0..total_vertices_count {
-                let vertex = VertexModel {
-                    pos: [
-                        mesh.positions[i * 3],
-                        mesh.positions[i * 3 + 1],
-                        mesh.positions[i * 3 + 2],
-                    ],
-                    normal: [
-                        mesh.normals[i * 3],
-                        mesh.normals[i * 3 + 1],
-                        mesh.normals[i * 3 + 2],
-                    ],
-                    tex_coord: [mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]],
-                };
-                vertices.push(vertex);
-            }
-    
-            indices = mesh.indices.clone();
-        }
-    
-        Ok((vertices, indices))
     }
 
     fn bind_all(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
@@ -193,15 +169,16 @@ impl Graphics {
         }
     }
 
-    fn create_texture_image(&self, texture_path: Option<&Path>, format: vk::Format, mipmap: bool) -> (vk::Image, vk::DeviceMemory, u32) {
-        let (image_width, image_height, image_data, word_width) =  match texture_path {
-            Some(path) => {
-                let mut image_object = image::open(path).unwrap(); // this function is slow in debug mode.
-                image_object = image_object.flipv();
-                let (image_width, image_height) = (image_object.width(), image_object.height());
+    fn create_texture_image(&self, image_object: Option<image::DynamicImage>,
+        format: vk::Format, mipmap: bool) -> (vk::Image, vk::DeviceMemory, u32) {
+
+        let (image_width, image_height, image_data, word_width) =  match image_object {
+            Some(mut io) => {
+                io = io.flipv();
+                let (image_width, image_height) = (io.width(), io.height());
                 let (image_data, word_width) = match format {
-                    vk::Format::R8G8B8A8_SRGB => (image_object.to_rgba8().into_raw(), 4),
-                    vk::Format::R8_SRGB => (image_object.to_luma8().into_raw(), 1),
+                    vk::Format::R8G8B8A8_SRGB => (io.to_rgba8().into_raw(), 4),
+                    vk::Format::R8_SRGB => (io.to_luma8().into_raw(), 1),
                     _ => panic!("Image format {:?} is not supported.", format)
                 };
                 (image_width, image_height, image_data, word_width)

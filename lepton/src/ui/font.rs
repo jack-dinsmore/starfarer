@@ -1,7 +1,4 @@
-use std::path::Path;
 use ash::vk;
-use std::fs::File;
-use std::io::prelude::*;
 
 use crate::Graphics;
 use crate::model::{Model, VertexType, TextureType, vertex::Vertex2Tex};
@@ -21,7 +18,9 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, font_name: &str, size: usize, spacing: i8) -> Font {
+    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, texture_bytes: &[u8], kern_bytes: &[u8], 
+        size: usize, spacing: i8) -> Font {
+
         let standard_width = size as f32 / graphics.window_width as f32 * 2.0;
         let standard_height = size as f32 / graphics.window_height as f32 * 2.0;
 
@@ -57,21 +56,15 @@ impl Font {
         }
 
         let model = Model::new(graphics, shader, VertexType::Specified(vertices, indices),
-            TextureType::Monochrome(&Path::new(&format!("assets/fonts/rendered/{}-{}.png", font_name, size)))).expect("Could not find font");
+            TextureType::Monochrome(texture_bytes)).expect("Could not load font");
 
         let kerns = {
-            let mut file = File::open(&Path::new(&format!("assets/fonts/rendered/{}-{}.dat", font_name, size))).expect("Could not find the kerning file");
-            // read the same file back into a Vec of bytes
-            let mut buffer = Vec::<u8>::with_capacity(N_CHARS * N_CHARS);
-            file.read_to_end(&mut buffer).expect("Could not read kerning file");
-            // Leak the buffer
             let i8_buffer = unsafe {
                 // Leak buffer
-                let mut buffer = std::mem::ManuallyDrop::new(buffer);
-                Vec::from_raw_parts(
-                    buffer.as_mut_ptr() as *mut i8,
-                    buffer.len(),
-                    buffer.capacity()
+                let kern_bytes = std::mem::ManuallyDrop::new(kern_bytes);
+                std::slice::from_raw_parts(
+                    kern_bytes.as_ptr() as *mut i8,
+                    kern_bytes.len()
                 )
             };
             i8_buffer.iter().map(|x| (*x + spacing) as f32 / graphics.window_width as f32 * 2.0).collect::<Vec<_>>()
@@ -137,7 +130,7 @@ impl Font {
             color: [0.0, 0.0, 0.0, 1.0],
             depth: 0.5 - operation_index as f32 / super::NUM_OPERATIONS / 2.0,
         };
-        let push_constant_bytes = unsafe { crate::tools::struct_as_bytes(&push_constants) };
+        let push_constant_bytes = crate::tools::struct_as_bytes(&push_constants);
         self.model.render_some(pipeline_layout, command_buffer, frame_index, Some(push_constant_bytes), index, 6);
     }
 }

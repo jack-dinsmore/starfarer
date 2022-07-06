@@ -65,6 +65,10 @@ Text kerning and single-channel font textures
 
 Finished HUD and button pressing
 
+## July 6
+
+Made textures, obj files, and fonts into their own .sfr format and included them in the binary.
+
 ## To do:
 - Rigid bodies
 - Skybox

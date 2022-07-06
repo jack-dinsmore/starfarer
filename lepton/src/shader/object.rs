@@ -47,7 +47,7 @@ impl Object {
     }
     
     pub(crate) fn get_push_constant_bytes(&self) -> &[u8] {
-        unsafe { crate::tools::struct_as_bytes(&self.push_constants) }
+        crate::tools::struct_as_bytes(&self.push_constants)
     }
 
     pub fn update_light(&self, lights: &mut shader::Lights, features: Option<shader::LightFeatures>) {

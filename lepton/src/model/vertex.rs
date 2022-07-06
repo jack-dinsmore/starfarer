@@ -1,7 +1,7 @@
 use ash::vk;
 use memoffset::offset_of;
 
-pub trait Vertex {
+pub trait Vertex: Clone {
     fn get_binding_descriptions() -> [vk::VertexInputBindingDescription; 1];
     fn get_attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription>;
 }

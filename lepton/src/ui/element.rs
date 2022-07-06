@@ -66,11 +66,11 @@ impl<D> ElementData<D> {
     pub(crate) fn render_hard(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, buffer_index: usize) {
         match self {
             ElementData::Button{blank, pc, ..} => {
-                let push_constant_bytes = unsafe { crate::tools::struct_as_bytes(pc) };
+                let push_constant_bytes = crate::tools::struct_as_bytes(pc);
                 blank.render(pipeline_layout, command_buffer, buffer_index, Some(push_constant_bytes));
             },
             ElementData::Background{blank, pc, ..} => {
-                let push_constant_bytes = unsafe { crate::tools::struct_as_bytes(pc) };
+                let push_constant_bytes =crate::tools::struct_as_bytes(pc);
                 blank.render(pipeline_layout, command_buffer, buffer_index, Some(push_constant_bytes));
             }
             _ => (),

@@ -1,14 +1,10 @@
 mod menus;
-
-use std::path::Path;
-use std::rc::Rc;
+mod ships;
 
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Quaternion, Point3};
 
 const WINDOW_TITLE: &'static str = "Starfarer";
-const MODEL_PATH: &'static str = "assets/endeavour/accessories/port.obj";//"assets/chalet.obj";
-const TEXTURE_PATH: &'static str = "assets/endeavour/accessories/port.png";//"assets/chalet.jpg";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.003;
@@ -24,7 +20,6 @@ struct Starfarer {
     physics: Physics,
 
     docking_port: Object,
-    docking_port2: Object,
     sun: Object,
 
     fps_menu: UserInterface<menus::FPS>,
@@ -42,17 +37,10 @@ impl Starfarer {
         let menu_common = menus::Common::new(graphics, &ui_shader);
         let fps_menu = menus::FPS::new(&menu_common);
         let escape_menu = menus::Escape::new(&menu_common);
+        let docking_port = ships::Ship::from_bytes(graphics, &model_shader,
+            include_bytes!("../assets/endeavour/accessories/port.sfr"));
         
         let physics = Physics::new();
-
-        let ship_model = Rc::new(Model::new(graphics, &model_shader,
-            VertexType::<vertex::VertexModel>::Path(&Path::new(MODEL_PATH)), TextureType::Transparency(&Path::new(TEXTURE_PATH)))
-            .expect("Model creation failed"));
-
-        let mut docking_port = Object::new(Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
-        let mut docking_port2 = Object::new(Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
-        docking_port.add_model(ship_model.clone());
-        docking_port2.add_model(ship_model.clone());
 
         let mut sun = Object::new(Vector3::new(5.0, -5.0, 10.0), Quaternion::new(1.0, 0.0, 0.0, 0.0));
         lights.illuminate(&mut sun, LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 2, brightness: 0.1});
@@ -68,7 +56,6 @@ impl Starfarer {
             key_tracker: KeyTracker::new(),
             physics,
             docking_port,
-            docking_port2,
             sun,
             set_cursor_visible: false,
         }
@@ -87,7 +74,6 @@ impl Lepton for Starfarer {
         }
         self.camera.adjust(camera_adjust);
         self.docking_port.set_pos(self.docking_port.pos + Vector3::unit_y() * 0.5 * delta_time as f64);
-        self.docking_port2.set_pos(self.docking_port2.pos - Vector3::unit_y() * 0.5 * delta_time as f64);
 
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
     }
@@ -104,7 +90,6 @@ impl Lepton for Starfarer {
         let mut actions = vec![
             Action::LoadShader(&self.model_shader),
             Action::DrawObject(&mut self.docking_port),
-            Action::DrawObject(&mut self.docking_port2),
             Action::LoadShader(&mut self.ui_shader),
             Action::DrawUI(&self.fps_menu),
         ];

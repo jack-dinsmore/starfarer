@@ -17,7 +17,10 @@ impl Common {
         ];
         let indices = vec![ 0, 2, 1, 1, 2, 3 ];
         Self {
-            font: Rc::new(Font::new(graphics, shader, "NunitoSans-Bold", 24, 3)),
+            font: Rc::new(Font::new(graphics, shader,
+                include_bytes!("../assets/fonts/rendered/NunitoSans-Bold-24.png"),
+                include_bytes!("../assets/fonts/rendered/NunitoSans-Bold-24.dat"),
+                24, 3)),
             blank: Rc::new(Model::new(graphics, shader, VertexType::Specified(vertices, indices), TextureType::Blank).expect("Could not load blank model")),
         }
     }
