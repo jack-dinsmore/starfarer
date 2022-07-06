@@ -7,13 +7,14 @@ authors = ["jtdinsmo <jtdinsmo@mit.edu>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-
 members = [
     "lepton",
+    "starfarer-macros",
 ]
 
 [dependencies]
 lepton = { path = "lepton" }
+starfarer-macros = { path = "starfarer-macros" }
 cgmath = "0.18.0"
 byteorder = "1.4.3"
 

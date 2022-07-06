@@ -4,7 +4,6 @@ pub mod model;
 pub mod physics;
 pub mod ui;
 pub mod tools;
-pub mod macros;
 mod graphics;
 mod control;
 mod fps_limiter;

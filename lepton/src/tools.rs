@@ -26,13 +26,13 @@ pub fn struct_as_bytes<T>(s: &T) -> &[u8] {
     }
 }
 
-pub fn read_as_bytes(path: &Path) -> Vec<u8> {
-    let mut f = File::open(&path).expect("no file found");
-    let metadata = fs::metadata(&path).expect("unable to read metadata");
+pub fn read_as_bytes(path: &Path) -> Result<Vec<u8>> {
+    let mut f = File::open(&path)?;
+    let metadata = fs::metadata(&path).expect("Metadata was corrupt");
     let mut buffer = vec![0; metadata.len() as usize];
-    f.read(&mut buffer).expect("buffer overflow");
+    f.read(&mut buffer).expect("Buffer was too short");
 
-    buffer
+    Ok(buffer)
 }
 
 pub fn load_obj(path: &Path) -> Result<(Vec<VertexModel>, Vec<u32>)> {

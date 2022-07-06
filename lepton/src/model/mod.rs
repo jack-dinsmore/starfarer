@@ -61,7 +61,7 @@ impl<'a> TextureType<'a> {
 // Constructors
 impl Model {
     pub fn new<'a, V: Vertex, S: Signature>(graphics: &Graphics, shader: &Shader<S>, vertex_type: VertexType<'a, V>, texture_type: TextureType<'a>) -> Result<Self> {
-        graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
+    graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (image, format, mipmap) = match texture_type {
             TextureType::Mipmap(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, true),
             TextureType::Transparency(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, false),

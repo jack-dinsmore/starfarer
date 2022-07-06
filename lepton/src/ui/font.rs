@@ -4,9 +4,9 @@ use crate::Graphics;
 use crate::model::{Model, VertexType, TextureType, vertex::Vertex2Tex};
 use crate::shader::{Shader, builtin};
 
-const N_COLS: usize = 12;
-const N_ROWS: usize = 8;
-const N_CHARS: usize = N_COLS * N_ROWS;
+const N_COLS: usize = 12;// COMMON! DO NOT CHANGE WITHOUT ADJUSTING STARFARER_MACROS
+const N_ROWS: usize = 8;// COMMON! DO NOT CHANGE WITHOUT ADJUSTING STARFARER_MACROS
+const N_CHARS: usize = N_COLS * N_ROWS;// COMMON! DO NOT CHANGE WITHOUT ADJUSTING STARFARER_MACROS
 
 pub struct Font {
     pub(crate) model: Model,
@@ -18,9 +18,7 @@ pub struct Font {
 }
 
 impl Font {
-    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, texture_bytes: &[u8], kern_bytes: &[u8], 
-        size: usize, spacing: i8) -> Font {
-
+    pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>, bytes: (&[u8], &[u8]), size: usize, spacing: i8) -> Font {
         let standard_width = size as f32 / graphics.window_width as f32 * 2.0;
         let standard_height = size as f32 / graphics.window_height as f32 * 2.0;
 
@@ -56,15 +54,15 @@ impl Font {
         }
 
         let model = Model::new(graphics, shader, VertexType::Specified(vertices, indices),
-            TextureType::Monochrome(texture_bytes)).expect("Could not load font");
+            TextureType::Monochrome(bytes.0)).expect("Could not load font");
 
         let kerns = {
             let i8_buffer = unsafe {
-                // Leak buffer
-                let kern_bytes = std::mem::ManuallyDrop::new(kern_bytes);
+                // Leak buffer, but I'm supposed to only do this for bytes.1. Small memory leak
+                let bytes = std::mem::ManuallyDrop::new(bytes);
                 std::slice::from_raw_parts(
-                    kern_bytes.as_ptr() as *mut i8,
-                    kern_bytes.len()
+                    bytes.1.as_ptr() as *mut i8,
+                    bytes.1.len()
                 )
             };
             i8_buffer.iter().map(|x| (*x + spacing) as f32 / graphics.window_width as f32 * 2.0).collect::<Vec<_>>()

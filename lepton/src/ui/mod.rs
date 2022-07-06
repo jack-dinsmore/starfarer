@@ -16,7 +16,6 @@ pub mod color {
 
 /// User interfaces hard-store UI layout. But what's actually shown on the ui, such as text or images,
 /// is stored in the Elements themselves so that it can be updated regularly.
-
 pub struct UserInterface<D> {
     pub data: D,
     pub elements: Vec<ElementData<D>>,

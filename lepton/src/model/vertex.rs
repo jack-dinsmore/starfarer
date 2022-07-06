@@ -8,7 +8,7 @@ pub trait Vertex: Clone {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct VertexModel {
+pub struct VertexModel {// COMMON! DO NOT CHANGE WITHOUT ADJUSTING STARFARER_MACROS
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub tex_coord: [f32; 2],

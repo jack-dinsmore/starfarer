@@ -10,7 +10,7 @@ pub struct Ship {
 
 impl Ship {
     pub fn _from_path(graphics: &Graphics, model_shader: &Shader<builtin::ModelSignature>, path: &Path) -> Object {
-        let bytes = lepton::tools::read_as_bytes(path);
+        let bytes = lepton::tools::read_as_bytes(path).unwrap();
         Self::from_bytes(graphics, model_shader, &bytes)
     }
 

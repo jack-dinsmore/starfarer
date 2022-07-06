@@ -1,6 +1,7 @@
 mod menus;
 mod ships;
 
+use starfarer_macros::include_ship;
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Quaternion, Point3};
 
@@ -37,8 +38,7 @@ impl Starfarer {
         let menu_common = menus::Common::new(graphics, &ui_shader);
         let fps_menu = menus::FPS::new(&menu_common);
         let escape_menu = menus::Escape::new(&menu_common);
-        let docking_port = ships::Ship::from_bytes(graphics, &model_shader,
-            include_bytes!("../assets/endeavour/accessories/port.sfr"));
+        let docking_port = ships::Ship::from_bytes(graphics, &model_shader, include_ship!("../assets/endeavour/accessories/port"));
         
         let physics = Physics::new();
 
