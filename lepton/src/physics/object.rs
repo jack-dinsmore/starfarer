@@ -3,6 +3,26 @@ use std::rc::Rc;
 
 use crate::shader;
 use crate::model::Model;
+pub type ObjectID = u16;
+
+pub struct ObjectManager {
+    max_id: ObjectID,
+}
+
+impl ObjectManager {
+    pub fn new() -> Self {
+        ObjectManager { max_id: 0 }
+    }
+
+    pub fn get_id(&mut self) -> ObjectID {
+        let id = self.max_id;
+        if self.max_id == ObjectID::MAX {
+            panic!("Too many objects have been created");
+        }
+        self.max_id += 1;
+        id
+    }
+}
 
 
 pub struct Object {

@@ -11,7 +11,7 @@ use std::ptr;
 
 pub use primitives::*;
 pub use pattern::*;
-use crate::{Control, constants::*, shader};
+use crate::{backend::Backend, constants::*, shader};
 use debug::ValidationInfo;
 
 pub(crate) static mut DEVICE: Option<ash::Device> = None;
@@ -96,10 +96,10 @@ impl DeviceExtension {
 /// Public functions
 impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
-    pub fn new(control: &Control, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
+    pub fn new(backend: &Backend, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
         input_types: Vec<shader::InputType>, num_shaders: usize) -> Self {
 
-        let window = Graphics::init_window(&control.event_loop, window_title, window_width, window_height);
+        let window = Graphics::init_window(&backend.event_loop, window_title, window_width, window_height);
 
         // Create basic Vulkan stuff
         let entry = ash::Entry::linked();

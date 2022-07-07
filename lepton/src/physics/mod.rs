@@ -1,5 +1,7 @@
+mod object;
+
+pub use object::*;
 use cgmath::{Vector3};
-use crate::shader::Object;
 
 pub struct Physics {
 
@@ -26,6 +28,9 @@ pub struct RigidBody<'a> {
     vel: Vector3<f64>,
     force: Vector3<f64>,
     mass: f64,
+
+    ang_vel: Vector3<f64>, // Local frame
+    torque: Vector3<f64>,
     
     updater: Updater,
     

@@ -1,6 +1,7 @@
 use cgmath::Vector4;
 
-use crate::shader::{Input, InputType, builtin, Object};
+use crate::shader::{Input, InputType, builtin};
+use crate::physics::Object;
 use crate::Graphics;
 
 pub struct LightFeatures {

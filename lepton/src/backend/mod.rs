@@ -1,20 +1,29 @@
+mod fps_limiter;
+mod receiver;
+mod renderer;
+
 use winit::{event::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState},
     event_loop::{EventLoop, ControlFlow}};
-use crate::{Graphics, Lepton, fps_limiter::FPSLimiter};
 
-pub struct Control {
+pub use fps_limiter::*;
+pub use receiver::*;
+pub use renderer::*;
+use crate::Graphics;
+
+
+pub struct Backend {
     pub(crate) event_loop: EventLoop<()>
 }
 
-impl Control {
+impl Backend {
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
-        Control { event_loop }
+        Backend { event_loop }
     }
 
     /// Run the main game loop. Consumes self.
-    pub fn run<L: Lepton>(self, mut graphics: Graphics, mut lepton: L) -> ! {
+    pub fn run<L: Renderer + InputReceiver>(self, mut graphics: Graphics, mut lepton: L) -> ! {
         let mut tick_counter = FPSLimiter::new();
 
         self.event_loop.run(move |event, _, control_flow| {
@@ -99,43 +108,5 @@ impl Control {
                 *control_flow = ControlFlow::Exit;
             }
         });
-    }
-}
-
-pub struct KeyTracker {
-    low_mask: u128,
-    high_mask: u128,
-}
-
-impl KeyTracker {
-    pub fn new() -> KeyTracker {
-        KeyTracker {
-            low_mask: 0,
-            high_mask: 0,
-        }
-    }
-
-    pub fn key_down(&mut self, vk: winit::event::VirtualKeyCode) {
-        if (vk as u32) < 128 {
-            self.low_mask |= 1 << (vk as u32);
-        } else {
-            self.high_mask |= 1 << ((vk as u32) - 128);
-        }
-    }
-
-    pub fn key_up(&mut self, vk: winit::event::VirtualKeyCode) {
-        if (vk as u32) < 128 {
-            self.low_mask &= !(1 << (vk as u32));
-        } else {
-            self.high_mask &= !(1 << ((vk as u32) - 128));
-        }
-    }
-
-    pub fn get_state(&self, vk: winit::event::VirtualKeyCode) -> bool{
-        0 != if (vk as u32) < 128 {
-            self.low_mask & (1 << (vk as u32))
-        } else {
-            self.high_mask & (1 << ((vk as u32) - 128))
-        }
     }
 }

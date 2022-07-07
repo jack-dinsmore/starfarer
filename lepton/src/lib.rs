@@ -4,13 +4,11 @@ pub mod model;
 pub mod physics;
 pub mod ui;
 pub mod tools;
+pub mod backend;
 mod graphics;
-mod control;
-mod fps_limiter;
 
-pub use graphics::*;
-pub use control::*;
-pub use winit::event::{VirtualKeyCode, MouseButton};
+pub use backend::{InputReceiver, Renderer};
+pub(crate) use graphics::*;
 
 /// A module to contain all of the constants which are set within the crate.
 mod constants {
@@ -28,40 +26,12 @@ mod constants {
 }
 
 pub mod prelude {
-    pub use crate::{Lepton, Graphics, Control, Pattern, KeyTracker, VirtualKeyCode, RenderData,
-        Action, MouseButton,
-        physics::Physics,
+    pub use crate::{Renderer, InputReceiver,
+        graphics::{Graphics, Pattern, RenderData, Action},
+        backend::{Backend, KeyTracker, VirtualKeyCode, MouseButton},
+        physics::{Physics, Object},
         model::{Model, TextureType, VertexType, vertex},
-        shader::{InputType, Shader, Camera, Lights, LightFeatures, Object, builtin},
+        shader::{InputType, Shader, Camera, Lights, LightFeatures, builtin},
         ui::{UserInterface, Element, ElementData, Font},
     };
-}
-
-/// A user-end trait which enables rendering and response to key presses
-pub trait Lepton: 'static {
-    /// Respond to a key press. Returns true if the program is to exit.
-    fn key_down(&mut self, _keycode: winit::event::VirtualKeyCode) {}
-
-    fn mouse_down(&mut self, _position: (f32, f32), _button: MouseButton) {}
-
-    /// Respond to a key release
-    fn key_up(&mut self, _keycode: winit::event::VirtualKeyCode) {}
-
-    /// Respond to mouse motion. True if the mouse pointer is to be reset to the center.
-    fn mouse_motion(&mut self, _delta: (f64, f64)) -> bool {false}
-
-    /// Render the scene by updating all inputs and rendering all patterns. The update function should
-    /// be preferred over the render function for all non-rendering code because render happens during 
-    /// GPU idle time and update can be called at any time from any thread.
-    fn render(&mut self, graphics: &Graphics, render_data: &mut RenderData);
-
-    /// Update all the objects.
-    fn update(&mut self, _delta_time: f32) {}
-
-    /// Called only on window resize. Record any static patterns again. There is no need to 
-    /// record patterns that are recorded every frame, hence why this function is initially empty.
-    fn resize(&mut self, _graphics: &Graphics) {}
-
-    /// Retuns true if the application should quit now.
-    fn should_quit(&self) -> bool {false}
 }

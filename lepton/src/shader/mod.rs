@@ -1,7 +1,6 @@
 mod camera;
 mod input;
 mod lights;
-mod object;
 pub mod builtin;
 
 use ash::vk;
@@ -11,7 +10,6 @@ use std::marker::PhantomData;
 
 pub use camera::*;
 pub use lights::*;
-pub use object::*;
 pub use input::{Input, InputType};
 use crate::Graphics;
 use crate::model::vertex::Vertex;
