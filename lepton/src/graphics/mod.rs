@@ -83,6 +83,9 @@ pub struct Graphics {
     graphics_data_receiver: Receiver<ThreadData<GraphicsData>>,
     pub(crate) object_models: HashMap<Object, Rc<Model>>,
     last_graphics_data: HashMap<Object, GraphicsData>,
+
+    #[cfg(target_os = "macos")]
+    pub(crate) last_delta: (f64, f64),
 }
 
 
@@ -90,23 +93,19 @@ const VALIDATION: ValidationInfo = ValidationInfo {
     is_enable: true,
     required_validation_layers: ["VK_LAYER_KHRONOS_validation"],
 };
+
+#[cfg(target_os = "macos")]
 pub(crate) const DEVICE_EXTENSIONS: DeviceExtension = DeviceExtension {
-    names: ["VK_KHR_swapchain"],
+    names: &["VK_KHR_swapchain", "VK_KHR_portability_subset"],
 };
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) const DEVICE_EXTENSIONS: DeviceExtension = DeviceExtension {
+    names: &["VK_KHR_swapchain"],
+};
+
+
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
-
-
-
-
-impl DeviceExtension {
-    pub fn get_extensions_raw_names(&self) -> [*const c_char; 1] {
-        [
-            // currently just enable the Swapchain extension.
-            ash::extensions::khr::Swapchain::name().as_ptr(),
-        ]
-    }
-}
-
 
 /// Public functions
 impl Graphics {
@@ -209,6 +208,10 @@ impl Graphics {
             graphics_data_receiver,
             object_models: HashMap::new(),
             last_graphics_data: HashMap::new(),
+
+            #[cfg(target_os = "macos")]
+            last_delta: (0.0, 0.0),
+
         }
     }
 
@@ -518,8 +521,16 @@ impl Graphics {
         (buffer, buffer_memory)
     }
 
-    pub fn center_cursor(&self) {
+    pub fn center_cursor(&mut self) {
         self.window.set_cursor_position(winit::dpi::PhysicalPosition{ x: self.window_width / 2, y: self.window_height / 2}).expect("Could not set cursor pos)");
+
+        #[cfg(target_os = "macos")] 
+        {
+            self.last_delta = (
+                self.mouse_position.0 as f64 * self.window_width as f64,
+                self.mouse_position.1 as f64 * self.window_height as f64
+            );
+        }
     }
 
     pub fn set_cursor_visible(&self, visible: bool) {
@@ -578,6 +589,12 @@ impl Graphics {
             .iter()
             .map(|layer_name| layer_name.as_ptr())
             .collect();
+
+        #[cfg(target_os = "macos")]
+        let create_info_flags = vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
+        
+        #[cfg(not(target_os = "macos"))]
+        let create_info_flags = vk::InstanceCreateFlags::empty();
     
         let create_info = vk::InstanceCreateInfo {
             s_type: vk::StructureType::INSTANCE_CREATE_INFO,
@@ -587,7 +604,7 @@ impl Graphics {
             } else {
                 ptr::null()
             },
-            flags: vk::InstanceCreateFlags::empty(),
+            flags: create_info_flags,
             p_application_info: &app_info,
             pp_enabled_layer_names: if is_enable_debug {
                 layer_names.as_ptr()
@@ -939,7 +956,7 @@ impl Graphics {
                 ptr::null()
             },
             enabled_extension_count: enable_extension_names.len() as u32,
-            pp_enabled_extension_names: enable_extension_names.as_ptr(),
+            pp_enabled_extension_names: (&enable_extension_names[..]).as_ptr(),
             p_enabled_features: &physical_device_features,
         };
     

@@ -97,6 +97,9 @@ impl Physics {
             });
         }
 
-        self.graphics_data_sender.send(graphics_data).unwrap();
+        match self.graphics_data_sender.send(graphics_data) {
+            Ok(_) => (),
+            Err(_) => return
+        };
     }
 }

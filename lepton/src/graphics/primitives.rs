@@ -1,8 +1,18 @@
 use ash::vk;
+use std::ffi::CString;
+use std::os::raw::c_char;
 
 pub(crate) struct DeviceExtension {
-    pub names: [&'static str; 1],
-    //    pub raw_names: [*const i8; 1],
+    pub(crate) names: &'static [&'static str],
+}
+
+impl DeviceExtension {
+    pub fn get_extensions_raw_names(&self) -> Vec<*const c_char> {
+        self.names.iter().map(|n| { 
+            let cstr = CString::new(*n).unwrap();
+            let cstr = std::mem::ManuallyDrop::new(cstr);
+            cstr.as_ptr() as *const c_char }).collect()
+    }
 }
 
 pub(crate) struct SurfaceStuff {

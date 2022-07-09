@@ -1,5 +1,6 @@
 
 use ash::vk;
+use std::ffi::CStr;
 
 #[cfg(target_os = "windows")]
 use ash::extensions::khr::Win32Surface;
@@ -27,6 +28,8 @@ pub fn required_extension_names() -> Vec<*const i8> {
         Surface::name().as_ptr(),
         MacOSSurface::name().as_ptr(),
         DebugUtils::name().as_ptr(),
+        CStr::from_bytes_with_nul(b"VK_KHR_portability_enumeration\0").unwrap().as_ptr(),
+        CStr::from_bytes_with_nul(b"VK_KHR_get_physical_device_properties2\0").unwrap().as_ptr(),
     ]
 }
 
@@ -95,14 +98,14 @@ pub unsafe fn create_surface(
     view.setWantsLayer(YES);
 
     let create_info = vk::MacOSSurfaceCreateInfoMVK {
-        s_type: vk::StructureType::MACOS_SURFACE_CREATE_INFO_M,
+        s_type: vk::StructureType::MACOS_SURFACE_CREATE_INFO_MVK,
         p_next: ptr::null(),
         flags: Default::default(),
         p_view: window.ns_view() as *const c_void,
     };
 
     let macos_surface_loader = MacOSSurface::new(entry, instance);
-    macos_surface_loader.create_mac_os_surface_mvk(&create_info, None)
+    macos_surface_loader.create_mac_os_surface(&create_info, None)
 }
 
 #[cfg(target_os = "windows")]

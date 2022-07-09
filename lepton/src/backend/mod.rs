@@ -64,16 +64,16 @@ impl Backend {
         }
 
         // Begin initialization of threads
-        let mut graphics_limiter = FPSLimiter::new();
+        let mut graphics_limiter = FPSLimiter::with_limits(None, None);
         let mut physics_limiter = FPSLimiter::with_limits(Some(60), Some(2));
+        let mut first_mouse_motion = true;
         lepton.prepare(&graphics);
         
         // Spawn the physics engine
         thread::spawn(move || {
             loop {
-                let delta_time = physics_limiter.delta_time();
+                let delta_time = physics_limiter.tick_frame();
                 physics.update(delta_time);
-                physics_limiter.tick_frame();
             }
         });
 
@@ -82,8 +82,19 @@ impl Backend {
             match event {
                 | Event::DeviceEvent { event, .. } => {
                     match event {
-                        DeviceEvent::MouseMotion{delta} => if lepton.mouse_motion(delta) {
-                            graphics.center_cursor();
+                        DeviceEvent::MouseMotion{mut delta} => {
+                            #[cfg(target_os = "macos")]
+                            {
+                                if !first_mouse_motion {
+                                    delta = (delta.0 + graphics.last_delta.0, delta.1 + graphics.last_delta.1);
+                                    graphics.last_delta = (0.0, 0.0);
+                                }
+                            }
+                            first_mouse_motion = false;
+
+                            if lepton.mouse_motion(delta) {
+                                graphics.center_cursor();
+                            }
                         },
                         _ => ()
                     }
@@ -137,8 +148,7 @@ impl Backend {
                     graphics.request_redraw();
                 },
                 | Event::RedrawRequested(_window_id) => {
-                    let delta_time = graphics_limiter.delta_time();
-
+                    let delta_time = graphics_limiter.tick_frame();
                     lepton.update(delta_time);
                     match graphics.begin_frame() {
                         Some(data) => {
@@ -148,7 +158,6 @@ impl Backend {
                         },
                         None => ()
                     };
-                    graphics_limiter.tick_frame();
                 },
                 | Event::LoopDestroyed => {
                     graphics.terminate();

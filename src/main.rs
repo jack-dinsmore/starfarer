@@ -11,7 +11,7 @@ use std::rc::Rc;
 const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
-const SENSITIVITY: f32 = 0.003;
+const SENSITIVITY: f32 = 0.1;
 
 struct Starfarer {
     model_shader: Shader<builtin::ModelSignature>,
@@ -20,6 +20,7 @@ struct Starfarer {
     camera: Camera,
     lights: Lights,
     key_tracker: KeyTracker,
+    last_deltas: (f64, f64),
 
     ships: Vec<Ship>,
     sun: Object,
@@ -51,6 +52,7 @@ impl Starfarer {
             fps_menu,
             escape_menu,
             key_tracker: KeyTracker::new(),
+            last_deltas: (0.0, 0.0),
             ships,
             sun,
             set_cursor_visible: false,
@@ -76,7 +78,8 @@ impl InputReceiver for Starfarer {
 
     fn mouse_motion(&mut self, delta: (f64, f64)) -> bool {
         if !self.escape_menu.data.is_open {
-            self.camera.turn(-delta.1 as f32 * SENSITIVITY, -delta.0 as f32 * SENSITIVITY);
+            self.last_deltas.0 += delta.0;
+            self.last_deltas.1 += delta.1;
             true
         } else {
             false
@@ -114,6 +117,9 @@ impl Renderer for Starfarer {
     }
 
     fn update(&mut self, delta_time: f32) {
+        self.camera.turn(-self.last_deltas.1 as f32 * SENSITIVITY * delta_time, -self.last_deltas.0 as f32 * SENSITIVITY * delta_time);
+        self.last_deltas = (0.0, 0.0);
+
         let mut camera_adjust = 
             - Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
             + Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)

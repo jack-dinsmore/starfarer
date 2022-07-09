@@ -17,6 +17,7 @@ Cargo.lock
 
 .DS_Store
 *.blend
+.vscode
 
 assets
 assets/fonts

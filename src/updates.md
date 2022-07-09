@@ -73,6 +73,14 @@ Made textures, obj files, and fonts into their own .sfr format and included them
 
 Reorganized things into a more useful fashion and made a physics engine thread. Built rigid bodies & started astroworks thrace-class station
 
+# July 8
+
+Transitioned to new machine and made program run on mac. Still needs to figure out mouse camera steering.
+
+# July 9
+
+Solved camera steering problem: on macos: moving the cursor adds to the device mouse delta so that the action is canceled.
+
 ## To do:
 - Space ships controls
 - Skybox
