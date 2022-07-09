@@ -50,10 +50,10 @@ pub(crate) struct SyncObjects {
     pub inflight_fences: Vec<vk::Fence>,
 }
 
-pub struct RenderData {
+pub(crate) struct RenderData {
     pub(crate) wait_semaphores: [vk::Semaphore; 1],
     pub(crate) wait_stages: [vk::PipelineStageFlags; 1],
     pub(crate) signal_semaphores: [vk::Semaphore; 1],
-    pub buffer_index: usize,
+    pub(crate) buffer_index: usize,
     pub(crate) submit_infos: Vec<vk::SubmitInfo>,
 }

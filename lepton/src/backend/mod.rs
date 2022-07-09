@@ -5,27 +5,79 @@ mod renderer;
 use winit::{event::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState},
     event_loop::{EventLoop, ControlFlow}};
+use std::sync::mpsc::{self, Sender, Receiver};
+use std::collections::HashMap;
+use std::thread;
 
 pub use fps_limiter::*;
 pub use receiver::*;
 pub use renderer::*;
-use crate::Graphics;
+use crate::{Graphics, GraphicsData};
+use crate::physics::{Physics, Object, PhysicsData};
+
+pub(crate) type ThreadData<T> = HashMap<Object, T>;
 
 
 pub struct Backend {
-    pub(crate) event_loop: EventLoop<()>
+    pub(crate) event_loop: EventLoop<()>,
+    pub(crate) graphics_data_sender: Option<Sender<ThreadData<GraphicsData>>>,
+    pub(crate) graphics_data_receiver: Option<Receiver<ThreadData<GraphicsData>>>,
+    pub(crate) physics_data_sender: Option<Sender<ThreadData<PhysicsData>>>,
+    pub(crate) physics_data_receiver: Option<Receiver<ThreadData<PhysicsData>>>,
 }
 
 impl Backend {
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
-        Backend { event_loop }
+        let graphics_data = mpsc::channel();
+        let physics_data = mpsc::channel();
+        Backend {
+            event_loop,
+            graphics_data_sender: Some(graphics_data.0),
+            graphics_data_receiver: Some(graphics_data.1),
+            physics_data_sender: Some(physics_data.0),
+            physics_data_receiver: Some(physics_data.1),
+        }
     }
 
     /// Run the main game loop. Consumes self.
-    pub fn run<L: Renderer + InputReceiver>(self, mut graphics: Graphics, mut lepton: L) -> ! {
-        let mut tick_counter = FPSLimiter::new();
+    pub fn run<L: Renderer + InputReceiver>(mut self, mut graphics: Graphics, mut lepton: L) -> ! {
+        let mut physics = Physics::new(&mut self);
 
+        // Add objects to graphics and physics
+        graphics.object_models = lepton.load_models(&graphics);
+        physics.rigid_bodies = lepton.load_rigid_bodies();
+        
+        // Validate the receivers and senders
+        if let Some(_) = self.graphics_data_sender {
+            panic!("The physics engine did not pick up the render data sender");
+        }
+        if let Some(_) = self.graphics_data_receiver {
+            panic!("The graphics engine did not pick up the render data receiver");
+        }
+        let _physics_data_sender = match self.physics_data_sender.take() {
+            Some(t) => t,
+            None => panic!("Someone picked up the physics data sender"),
+        };
+        if let Some(_) = self.physics_data_receiver {
+            panic!("The physics engine did not pick up the physics data receiver");
+        }
+
+        // Begin initialization of threads
+        let mut graphics_limiter = FPSLimiter::new();
+        let mut physics_limiter = FPSLimiter::with_limits(Some(60), Some(2));
+        lepton.prepare(&graphics);
+        
+        // Spawn the physics engine
+        thread::spawn(move || {
+            loop {
+                let delta_time = physics_limiter.delta_time();
+                physics.update(delta_time);
+                physics_limiter.tick_frame();
+            }
+        });
+
+        // Spawn the physics engine
         self.event_loop.run(move |event, _, control_flow| {
             match event {
                 | Event::DeviceEvent { event, .. } => {
@@ -85,17 +137,18 @@ impl Backend {
                     graphics.request_redraw();
                 },
                 | Event::RedrawRequested(_window_id) => {
-                    let delta_time = tick_counter.delta_time();
+                    let delta_time = graphics_limiter.delta_time();
 
                     lepton.update(delta_time);
                     match graphics.begin_frame() {
-                        Some(mut data) => {
-                            lepton.render(&graphics, &mut data);
-                            graphics.end_frame(data);
+                        Some(data) => {
+                            let tasks = lepton.render(&graphics, data.buffer_index);
+                            graphics.record(data.buffer_index, tasks);
+                            graphics.render(data);
                         },
                         None => ()
                     };
-                    tick_counter.tick_frame();
+                    graphics_limiter.tick_frame();
                 },
                 | Event::LoopDestroyed => {
                     graphics.terminate();

@@ -129,7 +129,7 @@ impl Input {
 impl Drop for Input {
     fn drop(&mut self) {
         unsafe {
-            if let Some(device) = &crate::DEVICE {
+            if let Some(device) = &crate::graphics::DEVICE {
                 for (uniform_buffer, uniform_buffer_memory) in self.uniform_buffers.iter().zip(self.uniform_buffers_memory.iter()) {
                     device.destroy_buffer(*uniform_buffer, None);
                     device.free_memory(*uniform_buffer_memory, None);

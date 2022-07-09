@@ -6,7 +6,8 @@ const SAMPLE_COUNT_FLOAT: f32 = SAMPLE_COUNT as f32;
 
 pub struct FPSLimiter {
     counter: Instant,
-    frame_time_prefer: Option<u32>, // unit microseconds
+    lower_frame_time: Option<u32>, // unit microseconds
+    upper_frame_time: Option<u32>, // unit microseconds
     samples: [u32; SAMPLE_COUNT],
     current_frame: usize,
     delta_frame: u32,
@@ -16,15 +17,30 @@ impl FPSLimiter {
     pub fn new() -> FPSLimiter {
         FPSLimiter {
             counter: Instant::now(),
-            frame_time_prefer: None,
+            lower_frame_time: None,
+            upper_frame_time: None,
             samples: [0; SAMPLE_COUNT],
             current_frame: 0,
             delta_frame: 0,
         }
     }
-
-    pub fn set_prefer_fps(&mut self, prefer_fps: f32) {
-        self.frame_time_prefer = Some((1000_000.0_f32 / prefer_fps) as u32);
+    pub fn with_limits(lower: Option<u32>, upper: Option<u32>) -> FPSLimiter {
+        let lower_frame_time = match lower {
+            Some(fps) => Some(1_000_000 / fps),
+            None => None,
+        };
+        let upper_frame_time = match upper {
+            Some(fps) => Some(1_000_000 / fps),
+            None => None,
+        };
+        FPSLimiter {
+            counter: Instant::now(),
+            lower_frame_time,
+            upper_frame_time,
+            samples: [0; SAMPLE_COUNT],
+            current_frame: 0,
+            delta_frame: 0,
+        }
     }
 
     /// Call this function in game loop to update its inner status.
@@ -36,10 +52,18 @@ impl FPSLimiter {
         self.samples[self.current_frame] = self.delta_frame;
         self.current_frame = (self.current_frame + 1) % SAMPLE_COUNT;
     
-        if let Some(t) = self.frame_time_prefer {
-            let time_left = t - self.delta_frame;
+        if let Some(t) = self.lower_frame_time {
+            let time_left = t as i32 - self.delta_frame as i32;
             if time_left > 0 {
                 thread::sleep(Duration::from_micros(time_left as u64));
+            }
+        }
+    
+        if let Some(t) = self.upper_frame_time {
+            let time_past = self.delta_frame as i32 - t as i32;
+            if time_past > 0 {
+                // Kill the frame
+                self.delta_frame = 0;
             }
         }
     }

@@ -168,7 +168,7 @@ impl<S: Signature> Shader<S> {
 impl<S: Signature> Drop for Shader<S> {
     fn drop(&mut self) {
         unsafe {
-            if let Some(device) = &crate::DEVICE {
+            if let Some(device) = &crate::graphics::DEVICE {
                 device.destroy_pipeline_layout(self.pipeline_layout, None);
                 device.destroy_pipeline(self.pipeline, None);
             }

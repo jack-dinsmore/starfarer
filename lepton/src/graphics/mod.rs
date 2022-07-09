@@ -1,20 +1,29 @@
 mod platforms;
 mod debug;
 mod primitives;
-mod pattern;
 
 use ash::vk;
 use winit::event_loop::EventLoop;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
+use std::sync::mpsc::Receiver;
+use std::rc::Rc;
+use std::collections::HashMap;
+use cgmath::Vector3;
 
-pub use primitives::*;
-pub use pattern::*;
-use crate::{backend::Backend, constants::*, shader};
+use primitives::*;
+pub use crate::backend::RenderTask;
+use crate::{backend::{Backend, ThreadData}, constants::*, shader, model::Model, physics::Object};
 use debug::ValidationInfo;
 
+pub(crate) struct GraphicsData {
+    pub push_constants: shader::builtin::ObjectPushConstants,
+    pub pos: Vector3<f32>,
+}
+
 pub(crate) static mut DEVICE: Option<ash::Device> = None;
+
 
 /// Gets the device. Can only be used after the device's creation and before Graphics is dropped.
 pub(crate) fn get_device() -> &'static ash::Device { unsafe {match &DEVICE { Some(d) => d, None => panic!("Device was none")}}}
@@ -68,6 +77,12 @@ pub struct Graphics {
     pub(crate) window_height: u32,
     pub(crate) mouse_position: (f32, f32),
     input_types: Vec<shader::InputType>,
+
+    command_buffers: Vec<vk::CommandBuffer>,
+
+    graphics_data_receiver: Receiver<ThreadData<GraphicsData>>,
+    pub(crate) object_models: HashMap<Object, Rc<Model>>,
+    last_graphics_data: HashMap<Object, GraphicsData>,
 }
 
 
@@ -96,7 +111,7 @@ impl DeviceExtension {
 /// Public functions
 impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
-    pub fn new(backend: &Backend, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
+    pub fn new(backend: &mut Backend, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
         input_types: Vec<shader::InputType>, num_shaders: usize) -> Self {
 
         let window = Graphics::init_window(&backend.event_loop, window_title, window_width, window_height);
@@ -132,6 +147,13 @@ impl Graphics {
             window.set_cursor_position(winit::dpi::PhysicalPosition{ x: window_width / 2, y: window_height / 2}).expect("Could not set cursor pos");
             window.set_cursor_visible(false);
         }
+
+        let command_buffers = Self::allocate_command_buffers(command_pool, framebuffers.len() as u32);
+
+        let graphics_data_receiver = match backend.graphics_data_receiver.take() {
+            Some(r) => r,
+            None => panic!("Someone picked up the graphics data receiver")
+        };
 
         Graphics {
             window,
@@ -182,6 +204,11 @@ impl Graphics {
             window_height,
             input_types,
             mouse_position: (0.0, 0.0),
+            command_buffers,
+
+            graphics_data_receiver,
+            object_models: HashMap::new(),
+            last_graphics_data: HashMap::new(),
         }
     }
 
@@ -197,6 +224,54 @@ impl Graphics {
     /// Submit redraw queue in Vulkan pipeline
     pub(crate) fn request_redraw(&self) {
         self.window.request_redraw();
+    }
+
+    pub(crate) fn add_model(&mut self, object: Object, model: Rc<Model>) {
+        self.object_models.insert(object, model);
+    }
+
+    pub(crate) fn record(&mut self, buffer_index: usize, actions: Vec<RenderTask>) {
+        unsafe {
+            crate::get_device().reset_command_buffer(
+                self.command_buffers[buffer_index],
+                vk::CommandBufferResetFlags::empty(),
+            ).expect("Resetting the command buffer failed");
+        }
+
+        self.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
+        let mut pipeline_layout = None;
+        if let Some(h) = receive_hash(&self.graphics_data_receiver) {
+            self.last_graphics_data = h;
+        }
+
+        for action in actions.iter() {
+            match action {
+                RenderTask::LoadShader(s) => {
+                    unsafe { crate::get_device().cmd_bind_pipeline(self.command_buffers[buffer_index],
+                        vk::PipelineBindPoint::GRAPHICS, s.get_pipeline()); }
+                        pipeline_layout = Some(s.get_pipeline_layout());
+                },
+                RenderTask::DrawObject(o) => {
+                    if let Some(ref m) = self.object_models.get(o) {
+                        if let Some(d) = self.last_graphics_data.get(o) {
+                            let bytes = crate::tools::struct_as_bytes(&d.push_constants);
+                            m.render(pipeline_layout.expect("You must first load a shader"),
+                                self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                        }
+                    }
+                },
+                RenderTask::DrawModel(m) => {
+                    m.render(pipeline_layout.expect("You must first load a shader"),
+                        self.command_buffers[buffer_index], buffer_index, None);
+                },
+                RenderTask::DrawUI(u) => {
+                    u.render(pipeline_layout.expect("You must first load a shader"), 
+                        self.command_buffers[buffer_index], buffer_index);
+                }
+            }
+        }
+
+        self.end_command_buffer(self.command_buffers[buffer_index]);
     }
 
     pub(crate) fn begin_frame(&mut self) -> Option<RenderData> {
@@ -246,12 +321,24 @@ impl Graphics {
         })
     }
 
-    pub(crate) fn end_frame(&mut self, data: RenderData) {
+    pub(crate) fn render(&mut self, mut render_data: RenderData) {
+        render_data.submit_infos.push(vk::SubmitInfo {
+            s_type: vk::StructureType::SUBMIT_INFO,
+            p_next: ptr::null(),
+            wait_semaphore_count: render_data.wait_semaphores.len() as u32,
+            p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
+            p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
+            command_buffer_count: 1,
+            p_command_buffers: &self.command_buffers[render_data.buffer_index],
+            signal_semaphore_count: render_data.signal_semaphores.len() as u32,
+            p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
+        });
+
         unsafe {
             crate::get_device()
                 .queue_submit(
                     self.graphics_queue,
-                    &data.submit_infos,
+                    &render_data.submit_infos,
                     self.in_flight_fences[self.current_frame],
                 )
                 .expect("Failed to execute queue submit.");
@@ -263,10 +350,10 @@ impl Graphics {
             s_type: vk::StructureType::PRESENT_INFO_KHR,
             p_next: ptr::null(),
             wait_semaphore_count: 1,
-            p_wait_semaphores: data.signal_semaphores.as_ptr(),
+            p_wait_semaphores: render_data.signal_semaphores.as_ptr(),
             swapchain_count: 1,
             p_swapchains: swapchains.as_ptr(),
-            p_image_indices: &(data.buffer_index as u32),
+            p_image_indices: &(render_data.buffer_index as u32),
             p_results: ptr::null_mut(),
         };
 
@@ -437,6 +524,13 @@ impl Graphics {
 
     pub fn set_cursor_visible(&self, visible: bool) {
         self.window.set_cursor_visible(visible);
+    }
+
+    pub fn get_pos(&self, object: &Object) -> Option<Vector3<f32>> {
+        if let Some(d) = self.last_graphics_data.get(object) {
+            return Some(d.pos);
+        }
+        None
     }
 }
 
@@ -1273,6 +1367,66 @@ impl Graphics {
             self.swapchain_loader.destroy_swapchain(self.swapchain, None);
         }
     }
+
+    /// Begin the command buffer. Panics if buffer cannot be started.
+    fn begin_command_buffer(&self, command_buffer: vk::CommandBuffer, buffer_index: usize) {
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo {
+            s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
+            p_next: ptr::null(),
+            p_inheritance_info: ptr::null(),
+            flags: vk::CommandBufferUsageFlags::SIMULTANEOUS_USE,
+        };
+        unsafe {
+            crate::get_device().begin_command_buffer(command_buffer, &command_buffer_begin_info)
+                .expect("Failed to begin recording command buffer at beginning!");
+        }
+
+        let render_pass_begin_info = vk::RenderPassBeginInfo {
+            s_type: vk::StructureType::RENDER_PASS_BEGIN_INFO,
+            p_next: ptr::null(),
+            render_pass: self.render_pass,
+            framebuffer: self.framebuffers[buffer_index],
+            render_area: vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: self.swapchain_extent,
+            },
+            clear_value_count: CLEAR_VALUES.len() as u32,
+            p_clear_values: CLEAR_VALUES.as_ptr(),
+        };
+
+        unsafe {
+            crate::get_device().cmd_begin_render_pass(
+                command_buffer,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
+            );
+        }
+    }
+
+    /// End the command buffer. Panics if buffer cannot be ended.
+    fn end_command_buffer(&self, command_buffer: vk::CommandBuffer) {
+        unsafe {
+            crate::get_device().cmd_end_render_pass(command_buffer);
+            crate::get_device().end_command_buffer(command_buffer)
+                .expect("Failed to record command buffer at ending!");
+        }
+    }
+
+    /// Allocates the primary command buffer. Panics if buffer cannot be allocated.
+    fn allocate_command_buffers(command_pool: vk::CommandPool, command_buffer_count: u32) -> Vec<vk::CommandBuffer> {
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo {
+            s_type: vk::StructureType::COMMAND_BUFFER_ALLOCATE_INFO,
+            p_next: ptr::null(),
+            command_buffer_count,
+            command_pool,
+            level: vk::CommandBufferLevel::PRIMARY,
+        };
+
+        unsafe {
+            crate::get_device().allocate_command_buffers(&command_buffer_allocate_info)
+                .expect("Failed to allocate command buffers!")
+        }
+    }
 }
 
 impl Drop for Graphics {
@@ -1283,4 +1437,8 @@ impl Drop for Graphics {
             DEVICE = None;
         }
     }
+}
+
+pub(crate) fn receive_hash(receiver: &Receiver<ThreadData<GraphicsData>>) -> Option<ThreadData<GraphicsData>> {
+    receiver.try_iter().last()
 }

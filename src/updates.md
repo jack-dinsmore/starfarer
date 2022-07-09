@@ -69,7 +69,10 @@ Finished HUD and button pressing
 
 Made textures, obj files, and fonts into their own .sfr format and included them in the binary.
 
+## July 7
+
+Reorganized things into a more useful fashion and made a physics engine thread. Built rigid bodies & started astroworks thrace-class station
+
 ## To do:
-- Rigid bodies
+- Space ships controls
 - Skybox
-- Space ships!

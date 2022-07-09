@@ -100,10 +100,30 @@ impl Model {
 
         Ok(model)
     }
+
+    pub fn null() -> Result<Self> {
+        Ok(Model {
+            vertex_buffer: vk::Buffer::null(),
+            vertex_buffer_memory: vk::DeviceMemory::null(),
+            index_buffer: vk::Buffer::null(),
+            index_buffer_memory: vk::DeviceMemory::null(),
+            num_indices: 0,
+
+            _mip_levels: 0,
+            texture_image: vk::Image::null(),
+            texture_image_view: vk::ImageView::null(),
+            texture_sampler: vk::Sampler::null(),
+            texture_image_memory: vk::DeviceMemory::null(),
+
+            descriptor_sets: Vec::new(),
+        })
+    }
 }
 
 impl Model {
     pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
+        if self.num_indices == 0 { return; }
+
         self.bind_all(pipeline_layout, command_buffer, frame_index, push_constant_bytes);
         unsafe {
             crate::get_device().cmd_draw_indexed(command_buffer, self.num_indices, 1, 0, 0, 0);
@@ -119,6 +139,8 @@ impl Model {
     }
 
     fn bind_all(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
+        if self.num_indices == 0 { return; }
+        
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0_u64];
         let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
@@ -139,7 +161,7 @@ impl Model {
 impl Drop for Model {
     fn drop(&mut self) {
         unsafe {
-            if let Some(device) = &crate::DEVICE {
+            if let Some(device) = &crate::graphics::DEVICE {
                 device.destroy_buffer(self.vertex_buffer, None);
                 device.free_memory(self.vertex_buffer_memory, None);
 

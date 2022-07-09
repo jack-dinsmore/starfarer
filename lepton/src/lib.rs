@@ -8,7 +8,7 @@ pub mod backend;
 mod graphics;
 
 pub use backend::{InputReceiver, Renderer};
-pub(crate) use graphics::*;
+pub(crate) use graphics::{Graphics, GraphicsData, get_device};
 
 /// A module to contain all of the constants which are set within the crate.
 mod constants {
@@ -27,9 +27,9 @@ mod constants {
 
 pub mod prelude {
     pub use crate::{Renderer, InputReceiver,
-        graphics::{Graphics, Pattern, RenderData, Action},
-        backend::{Backend, KeyTracker, VirtualKeyCode, MouseButton},
-        physics::{Physics, Object},
+        graphics::{Graphics},
+        backend::{Backend, RenderTask, KeyTracker, VirtualKeyCode, MouseButton},
+        physics::{Object, ObjectManager, RigidBody},
         model::{Model, TextureType, VertexType, vertex},
         shader::{InputType, Shader, Camera, Lights, LightFeatures, builtin},
         ui::{UserInterface, Element, ElementData, Font},

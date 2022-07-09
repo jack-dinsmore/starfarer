@@ -18,9 +18,9 @@ impl LightFeatures {
 }
 
 pub struct Lights {
-    index_state: [bool; builtin::NUM_LIGHTS],
-    pub(crate) light_pos: [Vector4::<f32>; builtin::NUM_LIGHTS],
-    pub(crate) light_features: [Vector4<f32>; builtin::NUM_LIGHTS],
+    object_indices: [Option<Object>; builtin::NUM_LIGHTS],
+    light_pos: [Vector4::<f32>; builtin::NUM_LIGHTS],
+    light_features: [Vector4<f32>; builtin::NUM_LIGHTS],
     input: Input,
 }
 
@@ -29,62 +29,57 @@ impl Lights {
         let input = InputType::Lights.new(graphics);
 
         Self {
-            index_state: [false; builtin::NUM_LIGHTS],
+            object_indices: [None; builtin::NUM_LIGHTS],
             light_pos: [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS],
             light_features: [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS],
             input,
         }
     }
 
-    pub fn illuminate(&mut self, object: &mut Object, features: LightFeatures) {
-        let index = match object.light_index{
+    pub fn illuminate(&mut self, object: Object, features: LightFeatures) {
+        let mut index = None;
+        for (i, val) in self.object_indices.iter().enumerate() {
+            if let None = val {
+                self.object_indices[i] = Some(object);
+                index = Some(i);
+                break;
+            }
+        }
+        let index = match index {
             Some(i) => i,
-            None => self.pop_index()
+            None => panic!("There are too many lights in the scene.")
         };
         self.light_features[index] = features.as_vec();
-        self.light_pos[index] = Vector4::new(object.pos.x as f32, object.pos.y as f32, object.pos.z as f32, 1.0);
-        object.light_index = Some(index);
     }
 
-    pub fn unilluminate(&mut self, object: &mut Object) {
-        if let Some(i) = object.light_index {
-            self.push_index(i);
-            object.light_index = None;
-        }
-    }
-
-    pub fn update_input(&mut self, buffer_index: usize) {
-        let mut light_pos = [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS];
-        let mut light_features = [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS];
-
-        let mut num_lights = 0;
-        for (index, state) in self.index_state.iter().enumerate() {
-            if *state {
-                light_pos[num_lights] = self.light_pos[index];
-                light_features[num_lights] = self.light_features[index];
-                num_lights += 1;
+    pub fn unilluminate(&mut self, object: Object) {
+        for (i, val) in self.object_indices.iter().enumerate() {
+            if let Some(o) = val {
+                if *o == object {
+                    self.object_indices[i] = None;
+                    break;
+                }
             }
         }
+    }
 
+    pub fn update_input(&mut self, graphics: &Graphics, buffer_index: usize) {
+        let mut num_lights = 0;
+        for (index, val) in self.object_indices.iter().enumerate() {
+            if let Some(o) = val {
+                num_lights += 1;
+                let pos = match graphics.get_pos(o) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                self.light_pos[index] = Vector4::new(pos.x, pos.y, pos.z, 1.0);
+            }
+        }
         let data = builtin::LightsData {
-            light_pos,
-            light_features,
-            num_lights: num_lights as u32,
+            light_pos: self.light_pos,
+            light_features: self.light_features,
+            num_lights,
         };
         self.input.update(data, buffer_index);
-    }
-
-    fn pop_index(&mut self) -> usize {
-        for (index, state) in self.index_state.iter().enumerate() {
-            if !state {
-                self.index_state[index] = true;
-                return index;
-            }
-        }
-        panic!("Too many lights have been illuminated");
-    }
-
-    fn push_index(&mut self, index: usize) {
-        self.index_state[index] = false;
     }
 }
