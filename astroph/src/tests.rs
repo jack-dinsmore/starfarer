@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use std::path::Path;
-const PERCENTILE: f32 = 0.9;
+const PERCENTILE: f32 = 0.99;
 
 const WIDTH: usize = 500;
 const HEIGHT: usize = 500;
@@ -29,7 +29,7 @@ fn get_top_map() {
 #[test]
 fn get_side_map() {
     let g = Galaxy::default();
-    let pixels = g.render(WIDTH, HEIGHT, Direction::Forward, [-35_000.0, 0.0, -5_000.0]);
+    let pixels = g.render(WIDTH, HEIGHT, Direction::Forward, [-35_000.0, 10.0, -5_000.0]);
     let mut brightnesses = pixels.concat().iter().map(|c| { f32::max((c.0 + c.1 + c.2) / 3.0, 0.0) }).collect::<Vec<_>>();
     brightnesses.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median = brightnesses[(WIDTH as f32 * HEIGHT as f32 * PERCENTILE) as usize];

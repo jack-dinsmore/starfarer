@@ -1,10 +1,11 @@
 // https://iopscience.iop.org/article/10.1088/0004-637X/783/2/138/pdf
 use noise::{OpenSimplex, NoiseFn};
 
-const RENDER_PRECISION: f32 = 0.02;
+const RENDER_PRECISION: f32 = 0.012;
 const PI: f32 = 3.141592653589793238462643383;
 const ONE_OVER_E: f32 = 0.36787944117;
 const INTENSITY_THRESHOLD: f32 = 2e-5;
+const MIN_DISTANCE: f32 = 0.05;
 
 const BULGE_SED: (f32, f32, f32) = (1.0, 0.7, 0.4);
 const DISK_SED: (f32, f32, f32) = (0.7, 0.6, 1.0);
@@ -62,6 +63,7 @@ pub struct Galaxy {
     disk_dropoff_frac: f32,
     twirl_star: f32,
     twirl_disk: f32,
+    twirl_dust: f32,
     dust_intensity: f32,
     dust_shift: f32,
 }
@@ -91,26 +93,27 @@ impl Galaxy {
             arm_winding_angle: 0.9,
             arm_winding_number: 4,
             arm_count: 3,
-            arm_width_young: 2.4,
+            arm_width_young: 2.8,
             arm_width_old: 1.4,
             arm_old_intensity: 0.3,
-            bulge_intensity: 0.5,
+            bulge_intensity: 4.5,
             bulge_size_frac: 0.2,
-            disk_intensity: 3.0,
+            disk_intensity: 60.0,
             disk_height_frac: 0.06,
-            disk_dropoff_frac: 0.25,
+            disk_dropoff_frac: 0.3,
             twirl_star: 0.1,
-            twirl_disk: 0.5,
-            dust_intensity: 0.6,
+            twirl_disk: 0.4,
+            twirl_dust: 0.5,
+            dust_intensity: 1.0,
             dust_shift: -0.3,
         }
     }
 
     pub fn render(&self, width: usize, height: usize, direction: Direction, pos: [f32; 3]) -> Vec<Vec<(f32, f32, f32)>> {
         let mut output = (0..height).collect::<Vec<_>>().iter().map(|_| { vec![(0.0, 0.0, 0.0); width] }).collect::<Vec<_>>();
-        let disk_map = Self::general_map::<8>(6.0, 1.2, 1);
-        let star_map = Self::general_map::<8>(80.0, 0.5, 8);
-        let dust_map = Self::general_map::<8>(8.0, 1.0, 2);
+        let disk_map = Self::general_map::<8>(12.0, 1.0, 1);
+        let star_map = Self::general_map::<8>(80.0, 0.5, 16);
+        let dust_map = Self::general_map::<8>(8.0, 0.8, 2);
         //let filament_map = Self::general_map::<7>(Theta::Linear, 0.0, 1.0, 4.0);
         for x in 0..width {
             for y in 0..height {
@@ -125,57 +128,39 @@ impl Galaxy {
                 let dir = mul(1.0 / norm(dir), dir);
                 let scaled_pos = mul(1.0 / self.radius, pos);
 
-                let alpha = if dir[2] == 0.0 { -1.0 } else { -scaled_pos[2] / dir[2] };
-                let middle_light_pos = add(scaled_pos, mul(alpha, dir));
-                let is_close_side = norm2(middle_light_pos) < 1.0 && alpha > 0.0;
-                let mut poses_close = Vec::new();
                 let mut poses_far = Vec::new();
-                if is_close_side { // If there is a close side
-                    poses_close.push((middle_light_pos, RENDER_PRECISION));
-                    let mut this_pos = middle_light_pos;
-                    loop {
-                        let length_scale = self.get_length_scale(this_pos[2]);
-                        this_pos = sub(this_pos, mul(length_scale, dir));
-                        if dot(sub(this_pos, scaled_pos), dir) < 0.0 {
-                            break;
+                let mut this_pos = add(scaled_pos, mul(MIN_DISTANCE, dir));
+                if norm2(this_pos) > 1.0 {
+                    // Move this_pos to sphere
+                    let alpha = {
+                        let d = dot(scaled_pos, dir);
+                        let discriminant = d*d - norm2(scaled_pos) + 1.0;
+                        if discriminant < 0.0 {
+                            continue;
                         }
-                        if norm2(this_pos) > 1.0 {
-                            break;
-                        }
-                        poses_close.push((this_pos, length_scale));
-                    }
+                        - d - discriminant.sqrt()
+                    };
+                    this_pos = add(scaled_pos, mul(alpha, dir));
                 }
-                let beta = {
-                    let d = dot(scaled_pos, dir);
-                    let discriminant = d*d - norm2(scaled_pos) + 1.0;
-                    if discriminant < 0.0 {
-                        continue;
-                    }
-                    - d - discriminant.sqrt()
-                };
-                let mut this_pos = if is_close_side {
-                    middle_light_pos
-                } else {
-                    add(scaled_pos, mul(beta.max(0.0) * 1.00000001, dir)) // Just inside sphere
-                };
+                poses_far.push((this_pos, 0.0));
                 loop {
                     let length_scale = self.get_length_scale(this_pos[2]);
                     this_pos = add(this_pos, mul(length_scale, dir));
                     if norm2(this_pos) > 1.0 {
                         // Add a pos that's on the sphere
-                        let gamma = {
+                        let beta = {
                             let d = dot(scaled_pos, dir);
                             - d + (d*d - norm2(scaled_pos) + 1.0).sqrt()
                         };
-                        let sphere_pos = add(scaled_pos, mul(gamma, dir));
+                        let sphere_pos = add(scaled_pos, mul(beta, dir));
                         let length_scale = norm(sub(this_pos, sphere_pos));
-                        poses_far.push((sphere_pos, length_scale));
+                        poses_far.iter_mut().last().unwrap().1 = length_scale;
                         break;
                     }
-                    poses_far.push((this_pos, length_scale));
+                    poses_far.iter_mut().last().unwrap().1 = length_scale;
+                    poses_far.push((this_pos, 0.0));
                 }
                 poses_far.reverse();
-                poses_far.append(&mut poses_close);
 
                 let mut color = (0.0, 0.0, 0.0);
 
@@ -190,11 +175,15 @@ impl Galaxy {
                     let arm_scale_old = (1.0 - 0.9 / max_angle * angle_diff(arm_theta, theta_now, max_angle)).powf(self.arm_width_old);
                     let arm_scale_dust = (1.0 - 0.9 / max_angle * angle_diff(arm_theta + self.dust_shift, theta_now, max_angle)).powf(self.arm_width_young);
                     let disk_scale = self.disk_lum(light_pos[2], r_disk_now);
-                    let dust_disk_scale = self.dust_disk_lum(light_pos[2], r_disk_now);
                     
                     let twirled_pos_disk = [
                         r_disk_now * (theta_now - arm_theta * self.twirl_disk).cos(),
                         r_disk_now * (theta_now - arm_theta * self.twirl_disk).sin(),
+                        light_pos[2]
+                    ];
+                    let twirled_pos_dust = [
+                        r_disk_now * (theta_now - arm_theta * self.twirl_dust).cos(),
+                        r_disk_now * (theta_now - arm_theta * self.twirl_dust).sin(),
                         light_pos[2]
                     ];
                     let twirled_pos_star_young = [
@@ -222,9 +211,9 @@ impl Galaxy {
                     if star_intensity_old >= INTENSITY_THRESHOLD {
                         star_intensity_old *= star_map(twirled_pos_star_old);
                     }
-                    let mut dust_intensity = length_scale * arm_scale_dust * dust_disk_scale * self.dust_intensity;
+                    let mut dust_intensity = length_scale * arm_scale_dust * disk_scale * self.dust_intensity;
                     if dust_intensity >= INTENSITY_THRESHOLD {
-                        dust_intensity *= dust_map(twirled_pos_disk);
+                        dust_intensity *= dust_map(twirled_pos_dust);
                     } 
                     dust_intensity *= 1000.0;
                     
@@ -293,14 +282,12 @@ impl Galaxy {
     }
 
     fn disk_lum(&self, z: f32, r: f32) -> f32 {
-        (z / self.disk_height_frac).cosh().powi(-2) * (-r / self.disk_dropoff_frac).exp()
-    }
-    fn dust_disk_lum(&self, z: f32, r: f32) -> f32 {
         let ratio = r / self.disk_dropoff_frac;
         (z / self.disk_height_frac).cosh().powi(-2) * (if ratio > 1.0 { (-ratio).exp() } else { ratio * ONE_OVER_E })
     }
     fn get_length_scale(&self, z: f32) -> f32 {
         //((z / self.disk_height_frac).cosh().powi(2) * RENDER_PRECISION).min(0.2)
-        (((z / self.disk_height_frac).powi(2) + 1.0)* RENDER_PRECISION).min(0.2)
+        //(((z / self.disk_height_frac).powi(2) + 1.0)* RENDER_PRECISION).min(0.3)
+        (((z / self.disk_height_frac).abs() + 1.0)* RENDER_PRECISION).min(0.3)
     }
 }
