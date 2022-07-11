@@ -12,6 +12,7 @@ pub enum RenderTask<'a> {
     LoadShader(&'a dyn ShaderTrait),
     DrawModel(&'a Rc<Model>),
     DrawUI(&'a dyn UserInterfaceTrait),
+    ClearDepthBuffer,
 }
 
 /// A user-end trait which enables rendering and response to key presses

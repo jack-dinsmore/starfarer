@@ -11,7 +11,7 @@ pub trait Vertex: Clone {
 pub struct VertexModel {// COMMON! DO NOT CHANGE WITHOUT ADJUSTING STARFARER_MACROS
     pub pos: [f32; 3],
     pub normal: [f32; 3],
-    pub tex_coord: [f32; 2],
+    pub coord: [f32; 2],
 }
 impl Vertex for VertexModel {
     fn get_binding_descriptions() -> [vk::VertexInputBindingDescription; 1] {
@@ -39,7 +39,7 @@ impl Vertex for VertexModel {
                 binding: 0,
                 location: 2,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: offset_of!(Self, tex_coord) as u32,
+                offset: offset_of!(Self, coord) as u32,
             },
         ]
     }
@@ -49,7 +49,7 @@ impl Vertex for VertexModel {
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex3Tex {
     pub pos: [f32; 3],
-    pub tex_coord: [f32; 2],
+    pub coord: [f32; 2],
 }
 impl Vertex for Vertex3Tex {
     fn get_binding_descriptions() -> [vk::VertexInputBindingDescription; 1] {
@@ -71,7 +71,7 @@ impl Vertex for Vertex3Tex {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: offset_of!(Self, tex_coord) as u32,
+                offset: offset_of!(Self, coord) as u32,
             },
         ]
     }
@@ -81,7 +81,7 @@ impl Vertex for Vertex3Tex {
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex2Tex {
     pub pos: [f32; 2],
-    pub tex_coord: [f32; 2],
+    pub coord: [f32; 2],
 }
 impl Vertex for Vertex2Tex {
     fn get_binding_descriptions() -> [vk::VertexInputBindingDescription; 1] {
@@ -103,7 +103,7 @@ impl Vertex for Vertex2Tex {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: offset_of!(Self, tex_coord) as u32,
+                offset: offset_of!(Self, coord) as u32,
             },
         ]
     }

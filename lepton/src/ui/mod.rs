@@ -6,12 +6,13 @@ use ash::vk;
 pub use font::Font;
 pub use element::*;
 
-pub type Color = [f64; 3];
+pub type Color = [f32; 3];
 pub(crate) const NUM_OPERATIONS: f32 = 0xffff as f32;
 
 pub mod color {
     use super::Color;
-    const RED: Color = [1.0, 0.0, 0.0];
+    pub const RED: Color = [1.0, 0.0, 0.0];
+    pub const WHITE: Color = [1.0, 1.0, 1.0];
 }
 
 /// User interfaces hard-store UI layout. But what's actually shown on the ui, such as text or images,

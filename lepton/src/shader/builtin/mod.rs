@@ -20,6 +20,8 @@ pub struct UIPushConstants {
     pub depth: f32,
 }
 
+pub struct EmptyPushConstants {}
+
 
 pub struct ModelSignature;
 impl shader::Signature for ModelSignature {

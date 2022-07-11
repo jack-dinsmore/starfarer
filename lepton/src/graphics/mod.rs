@@ -250,9 +250,12 @@ impl Graphics {
         for action in actions.iter() {
             match action {
                 RenderTask::LoadShader(s) => {
-                    unsafe { crate::get_device().cmd_bind_pipeline(self.command_buffers[buffer_index],
-                        vk::PipelineBindPoint::GRAPHICS, s.get_pipeline()); }
-                        pipeline_layout = Some(s.get_pipeline_layout());
+                    unsafe { crate::get_device().cmd_bind_pipeline(
+                        self.command_buffers[buffer_index],
+                        vk::PipelineBindPoint::GRAPHICS,
+                         s.get_pipeline());
+                    }
+                    pipeline_layout = Some(s.get_pipeline_layout());
                 },
                 RenderTask::DrawObject(o) => {
                     if let Some(ref m) = self.object_models.get(o) {
@@ -270,6 +273,24 @@ impl Graphics {
                 RenderTask::DrawUI(u) => {
                     u.render(pipeline_layout.expect("You must first load a shader"), 
                         self.command_buffers[buffer_index], buffer_index);
+                },
+                RenderTask::ClearDepthBuffer => {
+                    unsafe { crate::get_device().cmd_clear_attachments(
+                        self.command_buffers[buffer_index],
+                        &[vk::ClearAttachment {
+                            aspect_mask: vk::ImageAspectFlags::DEPTH,
+                            color_attachment: 0,
+                            clear_value: CLEAR_VALUES[1],
+                        }],
+                        &[vk::ClearRect{
+                            rect: vk::Rect2D {
+                                offset: vk::Offset2D{ x: 0, y: 0},
+                                extent: vk::Extent2D{ width: self.window_width, height: self.window_height}
+                            },
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        }]);
+                    }
                 }
             }
         }
@@ -417,8 +438,9 @@ impl Graphics {
         }
     }
 
-    pub(crate) fn create_image(device: &ash::Device, width: u32, height: u32, mip_levels: u32, num_samples: vk::SampleCountFlags, format: vk::Format, tiling: vk::ImageTiling,
-        usage: vk::ImageUsageFlags,required_memory_properties: vk::MemoryPropertyFlags, device_memory_properties: vk::PhysicalDeviceMemoryProperties) -> (vk::Image, vk::DeviceMemory) {
+    pub(crate) fn create_image(device: &ash::Device, width: u32, height: u32, mip_levels: u32, num_samples: vk::SampleCountFlags,
+        format: vk::Format, tiling: vk::ImageTiling, usage: vk::ImageUsageFlags,required_memory_properties: vk::MemoryPropertyFlags,
+        device_memory_properties: vk::PhysicalDeviceMemoryProperties) -> (vk::Image, vk::DeviceMemory) {
         let image_create_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
             p_next: ptr::null(),

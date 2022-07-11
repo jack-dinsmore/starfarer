@@ -65,7 +65,7 @@ pub fn load_obj(path: &Path) -> Result<(Vec<VertexModel>, Vec<u32>)> {
                     mesh.normals[i * 3 + 1],
                     mesh.normals[i * 3 + 2],
                 ],
-                tex_coord: [mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]],
+                coord: [mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]],
             };
             vertices.push(vertex);
         }

@@ -18,6 +18,7 @@ lepton = { path = "lepton" }
 starfarer-macros = { path = "starfarer-macros" }
 cgmath = "0.18.0"
 byteorder = "1.4.3"
+vk-shader-macros = "0.2.8"
 
 [build-dependencies]
 lepton = { path = "lepton" }

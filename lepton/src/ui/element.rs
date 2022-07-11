@@ -2,18 +2,18 @@ use std::rc::Rc;
 use ash::vk;
 
 use crate::shader::{builtin::UIPushConstants};
-use super::{Font, NUM_OPERATIONS};
+use super::{Font, Color, NUM_OPERATIONS};
 use crate::model::{Model};
 
 pub enum Element<D> {
-    Text{ font: Rc<Font>, text: String, x: f32, y: f32 },
+    Text{ font: Rc<Font>, text: String, x: f32, y: f32, color: Color },
     Button{ font: Rc<Font>, blank: Rc<Model>, text: String, x: f32, y: f32, width: f32, height: f32, action: Box<dyn Fn(&mut D)->()> },
     Background{ blank: Rc<Model>, x: f32, y: f32, width: f32, height: f32 },
 }
 
 
 pub enum ElementData<D> {
-    Text{ font: Rc<Font>, text: String, x: f32, y: f32 },
+    Text{ font: Rc<Font>, text: String, x: f32, y: f32, color: Color },
     Button{ pc: UIPushConstants, font: Rc<Font>, blank: Rc<Model>, text: String, x: f32, y: f32, width: f32, height: f32, font_x: f32, font_y: f32, action: Box<dyn Fn(&mut D)->()> },
     Background{ pc: UIPushConstants, blank: Rc<Model> },
 }
@@ -21,7 +21,7 @@ pub enum ElementData<D> {
 impl<D> ElementData<D> {
     pub fn new(e: Element<D>, operation_index: &mut u32) -> Self {
         match e {
-            Element::Text { font, text, x, y } => ElementData::Text { font, text, x, y },
+            Element::Text { font, text, x, y, color } => ElementData::Text { font, text, x, y, color },
             Element::Button { font, blank, text, x, y, width, height, action } => {
                 let font_length = font.length(&text);
                 let font_height = font.height();
@@ -79,11 +79,11 @@ impl<D> ElementData<D> {
 
     pub(crate) fn render_soft(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, buffer_index: usize, operation_index: &mut u32) {
         match self {
-            ElementData::Text{ font, text, x, y} => {
-                font.render(pipeline_layout, command_buffer, buffer_index, text, *x, *y, operation_index);
+            ElementData::Text{ font, text, x, y, color } => {
+                font.render(pipeline_layout, command_buffer, buffer_index, text, *x, *y, color.clone(), operation_index);
             },
             ElementData::Button{font, text, font_x, font_y, ..} => {
-                font.render(pipeline_layout, command_buffer, buffer_index, text, *font_x, *font_y, operation_index);
+                font.render(pipeline_layout, command_buffer, buffer_index, text, *font_x, *font_y, crate::ui::color::WHITE, operation_index);
             },
             _ => (),
         }

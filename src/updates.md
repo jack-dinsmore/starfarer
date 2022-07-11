@@ -81,6 +81,9 @@ Transitioned to new machine and made program run on mac. Still needs to figure o
 
 Solved camera steering problem: on macos: moving the cursor adds to the device mouse delta so that the action is canceled.
 
+# July 11
+
+Skybox
+
 ## To do:
 - Space ships controls
-- Skybox

@@ -1,8 +1,10 @@
 mod menus;
 mod ships;
+mod skybox;
 
 use starfarer_macros::include_ship;
 use ships::Ship;
+use skybox::Skybox;
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Point3, Quaternion};
 use std::collections::HashMap;
@@ -12,6 +14,7 @@ const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.1;
+const NUM_SHADERS: usize = 4;
 
 struct Starfarer {
     model_shader: Shader<builtin::ModelSignature>,
@@ -24,6 +27,7 @@ struct Starfarer {
 
     ships: Vec<Ship>,
     sun: Object,
+    skybox: Skybox,
 
     fps_menu: UserInterface<menus::FPS>,
     escape_menu: UserInterface<menus::Escape>,
@@ -43,6 +47,7 @@ impl Starfarer {
 
         let ships = vec![ships::Ship::from_bytes(graphics, &model_shader, &mut object_manager, include_ship!("../assets/astroworks/accessories/port"))];
         let sun = object_manager.get_object();
+        let skybox = Skybox::from_temp(graphics);
 
         Self {
             model_shader,
@@ -55,6 +60,7 @@ impl Starfarer {
             last_deltas: (0.0, 0.0),
             ships,
             sun,
+            skybox,
             set_cursor_visible: false,
         }
     }
@@ -141,6 +147,9 @@ impl Renderer for Starfarer {
         self.lights.update_input(graphics, buffer_index);
 
         let mut tasks = vec![
+            RenderTask::LoadShader(&self.skybox.skybox_shader),
+            RenderTask::DrawModel(&self.skybox.model),
+            RenderTask::ClearDepthBuffer,
             RenderTask::LoadShader(&self.model_shader),
         ];
         for ship in &self.ships {
@@ -164,7 +173,7 @@ impl Renderer for Starfarer {
 fn main() {
     let mut backend = Backend::new();
     let mut graphics = Graphics::new(&mut backend, WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT, true,
-        vec![InputType::Camera, InputType::Lights, InputType::UI], 3);
+        vec![InputType::Camera, InputType::Lights, InputType::UI], NUM_SHADERS);
     
     let starfarer = Starfarer::new(&mut graphics);
     

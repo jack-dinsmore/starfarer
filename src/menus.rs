@@ -11,10 +11,10 @@ pub struct Common {
 impl Common {
     pub fn new(graphics: &Graphics, shader: &Shader<builtin::UISignature>) -> Self {
         let vertices = vec![
-            vertex::Vertex2Tex { pos: [0.0, 0.0], tex_coord: [0.0, 0.0]},
-            vertex::Vertex2Tex { pos: [1.0, 0.0], tex_coord: [1.0, 0.0]},
-            vertex::Vertex2Tex { pos: [0.0, 1.0], tex_coord: [0.0, 1.0]},
-            vertex::Vertex2Tex { pos: [1.0, 1.0], tex_coord: [1.0, 1.0]},
+            vertex::Vertex2Tex { pos: [0.0, 0.0], coord: [0.0, 0.0]},
+            vertex::Vertex2Tex { pos: [1.0, 0.0], coord: [1.0, 0.0]},
+            vertex::Vertex2Tex { pos: [0.0, 1.0], coord: [0.0, 1.0]},
+            vertex::Vertex2Tex { pos: [1.0, 1.0], coord: [1.0, 1.0]},
         ];
         let indices = vec![ 0, 2, 1, 1, 2, 3 ];
         Self {
@@ -43,6 +43,7 @@ impl FPS {
         ).add(Element::Text{ 
             font: common.font.clone(),
             text: "FPS:".to_owned(),
+            color: color::WHITE,
             x: -1.0,
             y: -1.0,    
         })

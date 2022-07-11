@@ -31,7 +31,7 @@ pub mod prelude {
         backend::{Backend, RenderTask, KeyTracker, VirtualKeyCode, MouseButton},
         physics::{Object, ObjectManager, RigidBody},
         model::{Model, TextureType, VertexType, vertex},
-        shader::{InputType, Shader, Camera, Lights, LightFeatures, builtin},
-        ui::{UserInterface, Element, ElementData, Font},
+        shader::{self, InputType, Shader, Camera, Lights, LightFeatures, builtin},
+        ui::{UserInterface, Element, ElementData, Font, color},
     };
 }
