@@ -10,6 +10,7 @@ authors = ["jtdinsmo <jtdinsmo@mit.edu>"]
 members = [
     "lepton",
     "starfarer-macros",
+    "astroph",
 ]
 
 [dependencies]
