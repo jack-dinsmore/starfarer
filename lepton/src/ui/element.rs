@@ -31,7 +31,7 @@ impl<D> ElementData<D> {
                         y: y - height / 2.0,
                         stretch_x: width,
                         stretch_y: height,
-                        color: [1.0, 1.0, 1.0, 1.0],
+                        color: [0.0, 0.0, 0.0, 1.0],
                         depth: 0.5 - *operation_index as f32 / NUM_OPERATIONS / 2.0,
                     },
                     font, blank, text, action, width, height,

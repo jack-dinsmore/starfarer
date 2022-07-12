@@ -85,5 +85,9 @@ Solved camera steering problem: on macos: moving the cursor adds to the device m
 
 Skybox
 
+# July 12
+
+Ship model loaded in and started working on ship backend code.
+
 ## To do:
 - Space ships controls

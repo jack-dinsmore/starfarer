@@ -1,4 +1,4 @@
-use cgmath::{Vector3, Quaternion, Matrix4};
+use cgmath::{Vector3, Matrix3, Quaternion, Matrix4};
 
 use crate::shader::builtin;
 use super::{Updater, Collider};
@@ -47,8 +47,10 @@ impl RigidBody {
 
 impl RigidBody {
     pub(crate) fn push_constants(&self) -> builtin::ObjectPushConstants {
+        let rotation = Matrix4::from(Matrix3::from(self.orientation.cast().unwrap()));
         builtin::ObjectPushConstants {
-            model: Matrix4::from_translation(self.pos.cast().unwrap()),
+            model: Matrix4::from_translation(self.pos.cast().unwrap()) * rotation,
+            rotation: rotation,
         }
     }
 

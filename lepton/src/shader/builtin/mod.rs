@@ -8,6 +8,7 @@ pub const NUM_LIGHTS: usize = 2;
 #[repr(C)]
 pub struct ObjectPushConstants {
     pub model: Matrix4<f32>,
+    pub rotation: Matrix4<f32>,
 }
 
 #[repr(C)]

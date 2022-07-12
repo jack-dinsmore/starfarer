@@ -7,6 +7,7 @@
 
 layout (push_constant) uniform ObjectPushConstants {
     mat4 model;
+    mat4 rotation;
 } constants;
 layout (binding = 1) uniform CameraData {
     mat4 view;
@@ -29,6 +30,6 @@ out gl_PerVertex {
 void main() {
     worldCoord = (constants.model * vec4(inPosition, 1.0)).xyz; // Assumes that the model matrix does no scaling
     gl_Position = camera_ubo.proj * camera_ubo.view * vec4(worldCoord, 1.0);
-    fragNormal = inNormal;
+    fragNormal = (constants.rotation * vec4(inNormal, 1.0)).xyz;
     fragTexCoord = inTexCoord;
 }

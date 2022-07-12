@@ -45,7 +45,7 @@ impl Starfarer {
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
 
-        let ships = vec![ships::Ship::from_bytes(graphics, &model_shader, &mut object_manager, include_ship!("../assets/astroworks/accessories/port"))];
+        let ships = vec![ships::Ship::from_bytes(graphics, &model_shader, &mut object_manager, include_ship!("../assets/astroworks/starling/starling"))];
         let sun = object_manager.get_object();
         let skybox = Skybox::from_temp(graphics);
 
@@ -119,7 +119,7 @@ impl Renderer for Starfarer {
     }
     
     fn prepare(&mut self, _graphics: &Graphics) {
-        self.lights.illuminate(self.sun, LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 2, brightness: 0.1});
+        self.lights.illuminate(self.sun, LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 2, brightness: 0.5});
     }
 
     fn update(&mut self, delta_time: f32) {

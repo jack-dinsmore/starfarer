@@ -26,6 +26,10 @@ pub fn struct_as_bytes<T>(s: &T) -> &[u8] {
     }
 }
 
+pub fn bytes_as_struct<T>(bytes: &[u8]) -> T {
+    unsafe { std::ptr::read(bytes.as_ptr() as *const _) }
+}
+
 pub fn read_as_bytes(path: &Path) -> Result<Vec<u8>> {
     let mut f = File::open(&path)?;
     let metadata = fs::metadata(&path).expect("Metadata was corrupt");

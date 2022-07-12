@@ -5,6 +5,8 @@ use crate::constants::PI;
 use crate::shader;
 
 const NUM_LIGHTS: usize = 2; // Same as NUM_LIGHTS in shaders
+const MIN_DISTANCE: f32 = 0.1;
+const MAX_DISTANCE: f32 = 10_000.0;
 
 /// An example shader, made for use with a camera.
 pub struct Camera {
@@ -40,7 +42,7 @@ impl Camera {
                 Vector3::new(0.0, 0.0, 1.0),
             ),
             proj: {
-                let mut proj = cgmath::perspective(Deg(45.0), self.aspect, 0.1, 10.0);
+                let mut proj = cgmath::perspective(Deg(45.0), self.aspect, MIN_DISTANCE, MAX_DISTANCE);
                 proj[1][1] = proj[1][1] * -1.0;
                 proj
             },
