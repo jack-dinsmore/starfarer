@@ -1,18 +1,9 @@
-/// These are copies of lepton functions so that lepton does not have to be a dependency.
+/// These are copies of lepton functions so that lepton does not have to be a depend&ency.
 use anyhow::{Result, bail};
 use std::path::Path;
 use std::fs::File;
 use std::io::{Read, Cursor};
 use crate::common::*;
-
-pub fn struct_as_bytes<T>(s: &T) -> &[u8] {
-    unsafe {
-        std::slice::from_raw_parts(
-            (s as *const T) as *const u8,
-            ::std::mem::size_of::<T>(),
-        )
-    }
-}
 
 pub fn read_as_bytes(path: &Path) -> Result<Vec<u8>> {
     let mut f = File::open(&path)?;
@@ -23,45 +14,74 @@ pub fn read_as_bytes(path: &Path) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn load_obj(path: &Path) -> Result<(Vec<VertexModel>, Vec<u32>)> {
-    let model_obj = match tobj::load_obj(path, &tobj::LoadOptions{single_index: true, ..Default::default()}) {
+pub fn load_obj(obj_path: &Path, mtl_path: &Path, byte_data: &mut ShipByteData) -> Result<()> {
+    let model_obj = match tobj::load_obj(obj_path, &tobj::LoadOptions{single_index: true, ..Default::default()}) {
         Ok(m) => m,
-        Err(_) => bail!("Failed to load model object {}", path.display())
+        Err(_) => bail!("Failed to load model object {}", obj_path.display())
     };
-
-    let mut vertices = vec![];
-    let mut indices = vec![];
-
+    let materials = match tobj::load_mtl(mtl_path) {
+        Ok(m) => m.0,
+        Err(_) => bail!("Failed to load material file {}", mtl_path.display())
+    };
     let (models, _) = model_obj;
+    
     for m in models.iter() {
-        let mesh = &m.mesh;
-
-        if mesh.texcoords.len() == 0 {
-            bail!("Missing texture coordinates");
+        let (vertices, indices) = if m.name.starts_with("outside") {
+            &mut byte_data.outside
+        } else if m.name.starts_with("inside") {
+            if let None = byte_data.inside {
+                byte_data.inside = Some((Vec::new(), Vec::new())); 
+            }
+            byte_data.inside.as_mut().unwrap()
+        } else if m.name.starts_with("transparent") {
+            if let None = byte_data.transparent {
+                byte_data.transparent = Some((Vec::new(), Vec::new())); 
+            }
+            byte_data.transparent.as_mut().unwrap()
+        } else {
+            println!("Name {} was not recognized. Its model will be skipped", m.name);
+            continue; 
+        };
+        let material = &materials[m.mesh.material_id.unwrap()];
+        let total_normals_count = m.mesh.normals.len() / 3;
+        let total_vertices_count = m.mesh.positions.len() / 3;
+        if total_normals_count != total_vertices_count {
+            println!("There are {} more vertices than normals.", total_vertices_count - total_normals_count);
+        }
+        indices.reserve(m.mesh.indices.len());
+        for i in &m.mesh.indices {
+            indices.push(*i + vertices.len() as u32);
         }
 
-        let total_vertices_count = mesh.positions.len() / 3;
-        for i in 0..total_vertices_count {
-            let vertex = VertexModel {
+        vertices.reserve(total_normals_count);
+        for i in 0..total_normals_count {
+            let vertex = VertexLP {
                 pos: [
-                    mesh.positions[i * 3],
-                    mesh.positions[i * 3 + 1],
-                    mesh.positions[i * 3 + 2],
+                    m.mesh.positions[i * 3],
+                    m.mesh.positions[i * 3 + 1],
+                    m.mesh.positions[i * 3 + 2],
                 ],
                 normal: [
-                    mesh.normals[i * 3],
-                    mesh.normals[i * 3 + 1],
-                    mesh.normals[i * 3 + 2],
+                    m.mesh.normals[i * 3],
+                    m.mesh.normals[i * 3 + 1],
+                    m.mesh.normals[i * 3 + 2],
                 ],
-                tex_coord: [mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]],
+                color: [
+                    material.diffuse[0],
+                    material.diffuse[1],
+                    material.diffuse[2],
+                    material.dissolve,
+                ],
+                info: [
+                    material.specular[0],
+                    material.shininess,
+                    0.0, // Ambience (not implemented)
+                ],
             };
             vertices.push(vertex);
         }
-
-        indices = mesh.indices.clone();
     }
-
-    Ok((vertices, indices))
+    Ok(())
 }
 
 pub fn load_font_to_binary(font_path_name: &Path, size: usize) -> (Vec<u8>, Vec<u8>) {

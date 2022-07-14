@@ -81,7 +81,7 @@ pub struct Graphics {
     command_buffers: Vec<vk::CommandBuffer>,
 
     graphics_data_receiver: Receiver<ThreadData<GraphicsData>>,
-    pub(crate) object_models: HashMap<Object, Rc<Model>>,
+    pub(crate) object_models: HashMap<Object, Vec<Rc<Model>>>,
     last_graphics_data: HashMap<Object, GraphicsData>,
 
     #[cfg(target_os = "macos")]
@@ -230,7 +230,10 @@ impl Graphics {
     }
 
     pub(crate) fn add_model(&mut self, object: Object, model: Rc<Model>) {
-        self.object_models.insert(object, model);
+        match self.object_models.get_mut(&object) {
+            Some(v) => { v.push(model); },
+            None => { self.object_models.insert(object, vec![model]); },
+        };
     }
 
     pub(crate) fn record(&mut self, buffer_index: usize, actions: Vec<RenderTask>) {
@@ -258,11 +261,13 @@ impl Graphics {
                     pipeline_layout = Some(s.get_pipeline_layout());
                 },
                 RenderTask::DrawObject(o) => {
-                    if let Some(ref m) = self.object_models.get(o) {
+                    if let Some(model_vector) = self.object_models.get(o) {
                         if let Some(d) = self.last_graphics_data.get(o) {
                             let bytes = crate::tools::struct_as_bytes(&d.push_constants);
-                            m.render(pipeline_layout.expect("You must first load a shader"),
-                                self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                            for model in model_vector {
+                                model.render(pipeline_layout.expect("You must first load a shader"),
+                                    self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                            }
                         }
                     }
                 },

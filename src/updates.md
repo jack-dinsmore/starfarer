@@ -91,3 +91,4 @@ Ship model loaded in and started working on ship backend code.
 
 ## To do:
 - Space ships controls
+- Make sure that double-loaded ships share textures

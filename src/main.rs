@@ -14,10 +14,10 @@ const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.1;
-const NUM_SHADERS: usize = 4;
+const NUM_SHADERS: usize = 6;
 
 struct Starfarer {
-    model_shader: Shader<builtin::ModelSignature>,
+    low_poly_shader: Shader<builtin::LPSignature>,
     ui_shader: Shader<builtin::UISignature>,
 
     camera: Camera,
@@ -36,7 +36,7 @@ struct Starfarer {
 
 impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
-        let model_shader = Shader::new(graphics);
+        let low_poly_shader = Shader::new(graphics);
         let ui_shader = Shader::new(graphics);
         let camera = Camera::new(graphics, Point3::new(2.0, 0.0, 1.0));
         let lights = Lights::new(graphics);
@@ -45,12 +45,12 @@ impl Starfarer {
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
 
-        let ships = vec![ships::Ship::from_bytes(graphics, &model_shader, &mut object_manager, include_ship!("../assets/astroworks/starling/starling"))];
+        let ships = vec![ships::Ship::from_bytes(graphics, &low_poly_shader, &mut object_manager, include_ship!("../assets/enterprise/kestrel/kestrel"))];
         let sun = object_manager.get_object();
         let skybox = Skybox::from_temp(graphics);
 
         Self {
-            model_shader,
+            low_poly_shader,
             ui_shader,
             camera,
             lights,
@@ -100,12 +100,12 @@ impl InputReceiver for Starfarer {
 }
 
 impl Renderer for Starfarer {
-    fn load_models(&mut self, _graphics: &Graphics) -> HashMap<Object, Rc<Model>> {
+    fn load_models(&mut self, _graphics: &Graphics) -> HashMap<Object, Vec<Rc<Model>>> {
         let mut map = HashMap::new();
         for ship in self.ships.iter_mut() {
-            map.insert(ship.object, ship.model.take().expect("Ship was created incorrectly or double loaded"));
+            map.insert(ship.object, ship.get_models());
         }
-        map.insert(self.sun, Rc::new(Model::null().unwrap()));
+        map.insert(self.sun, Vec::new());
         map
     }
 
@@ -150,7 +150,7 @@ impl Renderer for Starfarer {
             RenderTask::LoadShader(&self.skybox.skybox_shader),
             RenderTask::DrawModel(&self.skybox.model),
             RenderTask::ClearDepthBuffer,
-            RenderTask::LoadShader(&self.model_shader),
+            RenderTask::LoadShader(&self.low_poly_shader),
         ];
         for ship in &self.ships {
             tasks.push(RenderTask::DrawObject(ship.object));

@@ -36,7 +36,7 @@ pub trait Renderer: 'static {
 
     /// Load all the models that will be used throughout the game and return them, paired with
     /// their objects.
-    fn load_models(&mut self, graphics: &Graphics) -> HashMap<Object, Rc<Model>>;
+    fn load_models(&mut self, graphics: &Graphics) -> HashMap<Object, Vec<Rc<Model>>>;
 
     /// Load all the rigid bodies for objects and return them with, paired with their objects.
     fn load_rigid_bodies(&mut self) -> HashMap<Object, RigidBody>;

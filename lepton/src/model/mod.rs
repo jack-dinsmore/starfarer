@@ -82,6 +82,7 @@ pub enum TextureType<'a> {
     Transparency(&'a [u8]),
     Monochrome(&'a [u8]),
     Blank,
+    None,
 }
 
 impl<'a> TextureType<'a> {
@@ -99,10 +100,35 @@ impl Model {
             TextureType::Transparency(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, false),
             TextureType::Monochrome(b) => (Some(TextureType::to_image(b)), vk::Format::R8_SRGB, false),
             TextureType::Blank => (None, vk::Format::R8_SRGB, false),
+            TextureType::None => (None, vk::Format::UNDEFINED, false),
         };
-        let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image(image, format, mipmap);
-        let texture_image_view = graphics.create_texture_image_view(texture_image, format, mip_levels);
-        let texture_sampler = graphics.create_texture_sampler(mip_levels);
+
+        let (
+            texture_image,
+            texture_image_memory,
+            mip_levels,
+            texture_image_view,
+            texture_sampler
+        ) = if format != vk::Format::UNDEFINED {
+            let (texture_image, texture_image_memory, mip_levels) = graphics.create_texture_image(image, format, mipmap);
+            let texture_image_view = graphics.create_texture_image_view(texture_image, format, mip_levels);
+            let texture_sampler = graphics.create_texture_sampler(mip_levels);
+            (
+                texture_image,
+                texture_image_memory,
+                mip_levels,
+                texture_image_view,
+                texture_sampler
+            )
+        } else {
+            (
+                vk::Image::null(),
+                vk::DeviceMemory::null(),
+                0,
+                vk::ImageView::null(),
+                vk::Sampler::null(),
+            )
+        };
 
         let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
             VertexType::Specified(v, i) => (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32),
@@ -200,11 +226,13 @@ impl Drop for Model {
                 device.destroy_buffer(self.index_buffer, None);
                 device.free_memory(self.index_buffer_memory, None);
 
-                device.destroy_sampler(self.texture_sampler, None);
-                device.destroy_image_view(self.texture_image_view, None);
-            
-                device.destroy_image(self.texture_image, None);
-                device.free_memory(self.texture_image_memory, None);
+                if self.texture_sampler != vk::Sampler::null() {
+                    device.destroy_sampler(self.texture_sampler, None);
+                    device.destroy_image_view(self.texture_image_view, None);
+                
+                    device.destroy_image(self.texture_image, None);
+                    device.free_memory(self.texture_image_memory, None);
+                }
             }
         }
     }
@@ -480,9 +508,8 @@ impl Graphics {
                     }
                 )
             }
-
-            descriptor_write_sets.push(                
-                vk::WriteDescriptorSet {
+            if texture_image_view != vk::ImageView::null() {
+                descriptor_write_sets.push(vk::WriteDescriptorSet {
                     // sampler uniform
                     s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
                     p_next: ptr::null(),
@@ -494,10 +521,10 @@ impl Graphics {
                     p_image_info: descriptor_image_infos.as_ptr(),
                     p_buffer_info: ptr::null(),
                     p_texel_buffer_view: ptr::null(),
-                },
-            );
-    
-            unsafe {
+                });
+            }
+
+                unsafe {
                 crate::get_device().update_descriptor_sets(&descriptor_write_sets, &[]);
             }
         }

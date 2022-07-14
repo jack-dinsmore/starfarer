@@ -45,6 +45,17 @@ impl shader::Signature for UISignature {
     const INPUTS: &'static [shader::InputType] = &[];
 }
 
+pub struct LPSignature;
+impl shader::Signature for LPSignature {
+    type V = model::vertex::VertexLP;
+    type PushConstants = ObjectPushConstants;
+    const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/lp.vert", kind: vert);
+    const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/lp.frag", kind: frag);const INPUTS: &'static [shader::InputType] = &[
+        shader::InputType::Camera,
+        shader::InputType::Lights,
+    ];
+}
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

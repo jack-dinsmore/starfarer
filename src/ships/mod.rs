@@ -40,7 +40,6 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use std::path::Path;
 use std::rc::Rc;
-use byteorder::{LittleEndian, ReadBytesExt};
 
 use fakes::*;
 use part::*;
@@ -56,44 +55,79 @@ pub struct ShipData {
     attachments: HashMap<PartID, PartInfo>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ShipByteData {
+    pub info_bytes: Vec<u8>,
+    pub outside: (Vec<vertex::VertexLP>, Vec<u32>),
+    pub inside: Option<(Vec<vertex::VertexLP>, Vec<u32>)>,
+    pub transparent: Option<(Vec<vertex::VertexLP>, Vec<u32>)>,
+}
+
 pub struct Ship {
     pub object: Object,
-    pub model: Option<Rc<Model>>,
+    pub outside_model: Option<Rc<Model>>, // These are all options so they can be taken.
+    pub inside_model: Option<Rc<Model>>,
+    pub transparent_model: Option<Rc<Model>>,
     pub rigid_body: Option<RigidBody>,
     data: ShipData,
 }
 
 impl Ship {
-    pub fn _from_path(graphics: &Graphics, model_shader: &Shader<builtin::ModelSignature>, object_manager: &mut ObjectManager, path: &Path) -> Ship {
+    pub fn _from_path(graphics: &Graphics, low_poly_shader: &Shader<builtin::LPSignature>, object_manager: &mut ObjectManager, path: &Path) -> Ship {
         let bytes = lepton::tools::read_as_bytes(path).unwrap();
-        Self::from_bytes(graphics, model_shader, object_manager, &bytes)
+        Self::from_bytes(graphics, low_poly_shader, object_manager, &bytes)
     }
 
-    pub fn from_bytes(graphics: &Graphics, model_shader: &Shader<builtin::ModelSignature>, object_manager: &mut ObjectManager, bytes: &[u8]) -> Ship {
-        let (info_size, texture_size, num_indices) = (
-            (&bytes[0..8]).read_u32::<LittleEndian>().unwrap() as usize,
-            (&bytes[8..16]).read_u32::<LittleEndian>().unwrap() as usize,
-            (&bytes[16..24]).read_u32::<LittleEndian>().unwrap() as usize,
-        );
+    pub fn from_bytes(graphics: &Graphics, low_poly_shader: &Shader<builtin::LPSignature>, object_manager: &mut ObjectManager, bytes: &[u8]) -> Ship {
+        let byte_data: ShipByteData = bincode::deserialize(bytes).unwrap();
 
-        let info_bytes = &bytes[12..(info_size + 24)];
-        let texture_bytes = &bytes[(info_size + 24)..(info_size + texture_size + 24)];
-        let object_bytes = &bytes[(info_size + texture_size + 24)..];
+        let data: ShipData = bincode::deserialize(&byte_data.info_bytes).unwrap();
 
-        let data: ShipData = bincode::deserialize(info_bytes).unwrap();
-
-        let model = Some(Rc::new(Model::new(graphics, &model_shader,
-            VertexType::<vertex::VertexModel>::Compiled(object_bytes, num_indices),
-            TextureType::Transparency(texture_bytes))
-            .expect("Model creation failed")));
+        let outside_model = Some(Rc::new(Model::new(graphics, &low_poly_shader,
+            VertexType::<vertex::VertexLP>::Specified(byte_data.outside.0, byte_data.outside.1),
+            TextureType::None)
+            .expect("Outside model creation failed")));
+        let inside_model = match byte_data.inside {
+            Some(data) => Some(Rc::new(Model::new(graphics, &low_poly_shader,
+                VertexType::<vertex::VertexLP>::Specified(data.0, data.1),
+                TextureType::None)
+                .expect("Inside model creation failed"))),
+            None => None
+        };
+        let transparent_model = match byte_data.transparent {
+            Some(data) => Some(Rc::new(Model::new(graphics, &low_poly_shader,
+                VertexType::<vertex::VertexLP>::Specified(data.0, data.1),
+                TextureType::None)
+                .expect("Transparent model creation failed"))),
+            None => None
+        };
         let rigid_body = Some(RigidBody::new(Vector3::new(-5.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
             Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0)));
         let object = object_manager.get_object();
         Ship {
             object,
-            model,
+            outside_model,
+            inside_model,
+            transparent_model,
             rigid_body,
             data,
         }
+    }
+
+    pub fn get_models(&mut self) -> Vec<Rc<Model>> {
+        let mut output = Vec::new();
+        match self.outside_model.take() {
+            Some(o) => output.push(o),
+            None => panic!("Ship had no outside model")
+        };
+        match self.inside_model.take() {
+            Some(o) => output.push(o),
+            None => panic!("Ship had no inside model")
+        };
+        match self.transparent_model.take() {
+            Some(o) => output.push(o),
+            None => ()
+        };
+        output
     }
 }

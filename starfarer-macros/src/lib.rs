@@ -5,7 +5,7 @@ use std::path::Path;
 use syn::{parse_macro_input, LitStr, LitInt, Token};
 use syn::parse::{Parse, ParseStream, Result};
 use quote::quote;
-use tools::{struct_as_bytes, read_as_bytes, load_obj, load_font_to_binary};
+use tools::{read_as_bytes, load_obj, load_font_to_binary};
 use proc_macro::TokenStream;
 
 extern crate proc_macro;
@@ -26,38 +26,24 @@ impl Parse for IncludeShip {
         let head_name = path_lit.value();
         let info_path = format!("{}.dat", head_name);
         let obj_path = format!("{}.obj", head_name);
-        let texture_path = format!("{}.png", head_name);
+        let mtl_path = format!("{}.mtl", head_name);
 
-        let info_data = match read_as_bytes(&Path::new(&format!("src/{}", info_path))) {
+        let info_bytes = match read_as_bytes(&Path::new(&format!("src/{}", info_path))) {
             Ok(o) => o,
             Err(_) => panic!("Could not find info path {}", info_path)
         };
-        let texture_data = match read_as_bytes(&Path::new(&format!("src/{}", texture_path))) {
-            Ok(o) => o,
-            Err(_) => panic!("Could not find texture path {}", texture_path)
+        let mut byte_data = common::ShipByteData {
+            info_bytes,
+            outside: (Vec::new(), Vec::new()),
+            inside: None,
+            transparent: None,
         };
-        let (vertices, indices) = match load_obj(&Path::new(&format!("src/{}", obj_path))) {
-            Ok(o) => o,
-            Err(_) => panic!("Could not find object path {}", obj_path)
-        };
-
-        let info_size = info_data.len() as u64;
-        let texture_size = texture_data.len() as u64;
-        let num_indices = indices.len() as u64;
-        let intro_bytes = [info_size, texture_size, num_indices];
-        let vertices_bytes = vertices.iter().map(|v| { struct_as_bytes(v)}).collect::<Vec<&[u8]>>().concat();
-        let indices_bytes = indices.iter().map(|i| { struct_as_bytes(i)}).collect::<Vec<&[u8]>>().concat();
-
-        let output = [
-            struct_as_bytes(&intro_bytes),
-            &info_data[..],
-            &texture_data[..], 
-            &vertices_bytes[..],
-            &indices_bytes[..],
-        ].concat();
-
+        if let Err(_) = load_obj(&Path::new(&format!("src/{}", obj_path)), &Path::new(&format!("src/{}", mtl_path)), &mut byte_data) {
+            panic!("Could not find object {} or {}", obj_path, mtl_path);
+        }
+        let output = bincode::serialize(&byte_data).unwrap();
         Ok(Self {
-            sources: vec![info_path, obj_path, texture_path],
+            sources: vec![info_path, obj_path, mtl_path],
             output,
         })
     }
