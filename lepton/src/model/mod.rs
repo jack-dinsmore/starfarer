@@ -2,6 +2,8 @@ use anyhow::Result;
 use ash::vk;
 use std::ptr;
 use std::cmp::max;
+use std::rc::Rc;
+use cgmath::Matrix4;
 
 pub mod vertex;
 use vertex::*;
@@ -27,6 +29,11 @@ pub struct Model {
     _mip_levels: u32,
     
     descriptor_sets: Vec<vk::DescriptorSet>,
+}
+
+pub enum DrawState {
+    Standard(Rc<Model>),
+    Offset(Rc<Model>, Matrix4<f32>),
 }
 
 pub enum VertexType<'a, V: Vertex> {

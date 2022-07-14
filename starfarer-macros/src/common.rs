@@ -3,6 +3,9 @@ pub const N_ROWS: usize = 8;
 pub const N_CHARS: usize = N_COLS * N_ROWS;
 
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+
+pub type ModelData = HashMap<String, (Vec<VertexLP>, Vec<u32>)>;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -11,12 +14,4 @@ pub struct VertexLP {
     pub normal: [f32; 3],
     pub color: [f32; 4],
     pub info: [f32; 3],
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ShipByteData {
-    pub info_bytes: Vec<u8>,
-    pub outside: (Vec<VertexLP>, Vec<u32>),
-    pub inside: Option<(Vec<VertexLP>, Vec<u32>)>,
-    pub transparent: Option<(Vec<VertexLP>, Vec<u32>)>,
 }

@@ -1,20 +1,13 @@
 /// These are copies of lepton functions so that lepton does not have to be a depend&ency.
 use anyhow::{Result, bail};
 use std::path::Path;
-use std::fs::File;
 use std::io::{Read, Cursor};
+use std::collections::HashMap;
 use crate::common::*;
 
-pub fn read_as_bytes(path: &Path) -> Result<Vec<u8>> {
-    let mut f = File::open(&path)?;
-    let metadata = std::fs::metadata(&path).expect("Metadata was corrupt");
-    let mut buffer = vec![0; metadata.len() as usize];
-    f.read(&mut buffer).expect("Buffer was too short");
+pub fn load_obj(obj_path: &Path, mtl_path: &Path) -> Result<ModelData> {
+    let mut output = HashMap::new();
 
-    Ok(buffer)
-}
-
-pub fn load_obj(obj_path: &Path, mtl_path: &Path, byte_data: &mut ShipByteData) -> Result<()> {
     let model_obj = match tobj::load_obj(obj_path, &tobj::LoadOptions{single_index: true, ..Default::default()}) {
         Ok(m) => m,
         Err(_) => bail!("Failed to load model object {}", obj_path.display())
@@ -26,22 +19,10 @@ pub fn load_obj(obj_path: &Path, mtl_path: &Path, byte_data: &mut ShipByteData) 
     let (models, _) = model_obj;
     
     for m in models.iter() {
-        let (vertices, indices) = if m.name.starts_with("outside") {
-            &mut byte_data.outside
-        } else if m.name.starts_with("inside") {
-            if let None = byte_data.inside {
-                byte_data.inside = Some((Vec::new(), Vec::new())); 
-            }
-            byte_data.inside.as_mut().unwrap()
-        } else if m.name.starts_with("transparent") {
-            if let None = byte_data.transparent {
-                byte_data.transparent = Some((Vec::new(), Vec::new())); 
-            }
-            byte_data.transparent.as_mut().unwrap()
-        } else {
-            println!("Name {} was not recognized. Its model will be skipped", m.name);
-            continue; 
-        };
+        if !output.contains_key(&m.name) {
+            output.insert(m.name.clone(), (Vec::new(), Vec::new()));
+        }
+        let (vertices, indices) = output.get_mut(&m.name).unwrap();
         let material = &materials[m.mesh.material_id.unwrap()];
         let total_normals_count = m.mesh.normals.len() / 3;
         let total_vertices_count = m.mesh.positions.len() / 3;
@@ -81,7 +62,7 @@ pub fn load_obj(obj_path: &Path, mtl_path: &Path, byte_data: &mut ShipByteData) 
             vertices.push(vertex);
         }
     }
-    Ok(())
+    Ok(output)
 }
 
 pub fn load_font_to_binary(font_path_name: &Path, size: usize) -> (Vec<u8>, Vec<u8>) {

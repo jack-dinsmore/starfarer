@@ -1,12 +1,5 @@
-use serde::{Serialize, Deserialize};
-use super::{PartID};
+use super::primitives::*;
 
-pub type FunctionID = u32;
-
-#[derive(Serialize, Deserialize)]
-pub struct Function {
-    actions: Vec<Action>
-}
 impl Function {
     pub fn new(actions: Vec<Action>) -> Self {
         Function { actions }
@@ -20,9 +13,3 @@ impl Function {
         }
     }
 }
-
-#[derive(Serialize, Deserialize)]
-pub enum Action {
-    Execute(PartID, FunctionID)
-}
-

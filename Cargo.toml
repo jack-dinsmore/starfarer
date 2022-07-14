@@ -22,4 +22,6 @@ bincode = "1.3.3"
 serde = { version = "1.0.139", features = ["derive"] }
 
 [build-dependencies]
-lepton = { path = "lepton" }
+bincode = "1.3.3"
+serde = { version = "1.0.139", features = ["derive"] }
+cgmath = "0.18.0"

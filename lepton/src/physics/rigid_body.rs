@@ -10,37 +10,44 @@ pub struct RigidBody {
 
     orientation: Quaternion<f64>,
     ang_vel: Vector3<f64>, // Local frame
+    moi: Matrix3<f64>,
     
     updater: Updater,
     
     radius: f64,
     collider: Collider,
+    model_offset: Vector3<f32>,
 }
 
 impl RigidBody {
-    pub fn new(pos: Vector3<f64>, vel: Vector3<f64>, orientation: Quaternion<f64>, ang_vel: Vector3<f64>) -> Self {
+    pub fn new(pos: Vector3<f64>, vel: Vector3<f64>, orientation: Quaternion<f64>, ang_vel: Vector3<f64>,
+        moi: Matrix3<f32>, model_offset: Vector3<f32>) -> Self {
         Self {
             pos,
             vel,
             mass: 0.0,
             orientation,
             ang_vel,
+            moi: moi.cast().unwrap(),
             updater: Updater::Fixed,
             radius: 0.0,
             collider: Collider::None,
+            model_offset
         }
     }
 
-    pub fn still(pos: Vector3<f64>, orientation: Quaternion<f64>) -> Self {
+    pub fn by_pos(pos: Vector3<f64>) -> Self {
         Self {
             pos,
             vel: Vector3::new(0.0, 0.0, 0.0),
             mass: 0.0,
-            orientation,
+            orientation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
             ang_vel: Vector3::new(0.0, 0.0, 0.0),
+            moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
             radius: 0.0,
             collider: Collider::None,
+            model_offset: Vector3::new(0.0, 0.0, 0.0)
         }
     }
 }
@@ -49,7 +56,7 @@ impl RigidBody {
     pub(crate) fn push_constants(&self) -> builtin::ObjectPushConstants {
         let rotation = Matrix4::from(Matrix3::from(self.orientation.cast().unwrap()));
         builtin::ObjectPushConstants {
-            model: Matrix4::from_translation(self.pos.cast().unwrap()) * rotation,
+            model: Matrix4::from_translation(self.pos.cast().unwrap() + self.model_offset) * rotation,
             rotation: rotation,
         }
     }

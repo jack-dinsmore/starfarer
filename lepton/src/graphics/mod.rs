@@ -8,13 +8,12 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 use std::sync::mpsc::Receiver;
-use std::rc::Rc;
 use std::collections::HashMap;
 use cgmath::Vector3;
 
 use primitives::*;
 pub use crate::backend::RenderTask;
-use crate::{backend::{Backend, ThreadData}, constants::*, shader, model::Model, physics::Object};
+use crate::{backend::{Backend, ThreadData}, constants::*, shader, model::DrawState, physics::Object};
 use debug::ValidationInfo;
 
 pub(crate) struct GraphicsData {
@@ -81,7 +80,7 @@ pub struct Graphics {
     command_buffers: Vec<vk::CommandBuffer>,
 
     graphics_data_receiver: Receiver<ThreadData<GraphicsData>>,
-    pub(crate) object_models: HashMap<Object, Vec<Rc<Model>>>,
+    pub(crate) object_models: HashMap<Object, Vec<DrawState>>,
     last_graphics_data: HashMap<Object, GraphicsData>,
 
     #[cfg(target_os = "macos")]
@@ -229,10 +228,10 @@ impl Graphics {
         self.window.request_redraw();
     }
 
-    pub(crate) fn add_model(&mut self, object: Object, model: Rc<Model>) {
+    pub(crate) fn add_model(&mut self, object: Object, draw_state: DrawState) {
         match self.object_models.get_mut(&object) {
-            Some(v) => { v.push(model); },
-            None => { self.object_models.insert(object, vec![model]); },
+            Some(v) => { v.push(draw_state); },
+            None => { self.object_models.insert(object, vec![draw_state]); },
         };
     }
 
@@ -261,12 +260,22 @@ impl Graphics {
                     pipeline_layout = Some(s.get_pipeline_layout());
                 },
                 RenderTask::DrawObject(o) => {
-                    if let Some(model_vector) = self.object_models.get(o) {
-                        if let Some(d) = self.last_graphics_data.get(o) {
-                            let bytes = crate::tools::struct_as_bytes(&d.push_constants);
-                            for model in model_vector {
-                                model.render(pipeline_layout.expect("You must first load a shader"),
-                                    self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                    if let Some(draw_states) = self.object_models.get(o) {
+                        if let Some(d) = self.last_graphics_data.get_mut(o) {
+                            for state in draw_states {
+                                match state {
+                                    DrawState::Standard(model) => {
+                                        let bytes = crate::tools::struct_as_bytes(&d.push_constants);
+                                        model.render(pipeline_layout.expect("You must first load a shader"),
+                                        self.command_buffers[buffer_index], buffer_index, Some(bytes))
+                                    },
+                                    DrawState::Offset(model, matrix) => {
+                                        let new_pc = d.push_constants.model.clone() * matrix;
+                                        let bytes = crate::tools::struct_as_bytes(&new_pc);
+                                        model.render(pipeline_layout.expect("You must first load a shader"),
+                                        self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                                    },
+                                };
                             }
                         }
                     }

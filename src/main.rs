@@ -2,19 +2,17 @@ mod menus;
 mod ships;
 mod skybox;
 
-use starfarer_macros::include_ship;
-use ships::Ship;
+use ships::{Ship, ShipLoader};
 use skybox::Skybox;
 use lepton::prelude::*;
-use cgmath::{prelude::*, Vector3, Point3, Quaternion};
+use cgmath::{prelude::*, Vector3, Point3};
 use std::collections::HashMap;
-use std::rc::Rc;
 
 const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const SENSITIVITY: f32 = 0.1;
-const NUM_SHADERS: usize = 6;
+const NUM_SHADERS: usize = 20;
 
 struct Starfarer {
     low_poly_shader: Shader<builtin::LPSignature>,
@@ -44,8 +42,11 @@ impl Starfarer {
         let fps_menu = menus::FPS::new(&menu_common);
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
+        let mut ship_loader = ShipLoader::new();
 
-        let ships = vec![ships::Ship::from_bytes(graphics, &low_poly_shader, &mut object_manager, include_ship!("../assets/enterprise/kestrel/kestrel"))];
+        let ships = vec![
+            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL)
+        ];
         let sun = object_manager.get_object();
         let skybox = Skybox::from_temp(graphics);
 
@@ -100,7 +101,7 @@ impl InputReceiver for Starfarer {
 }
 
 impl Renderer for Starfarer {
-    fn load_models(&mut self, _graphics: &Graphics) -> HashMap<Object, Vec<Rc<Model>>> {
+    fn load_models(&mut self, _graphics: &Graphics) -> HashMap<Object, Vec<DrawState>> {
         let mut map = HashMap::new();
         for ship in self.ships.iter_mut() {
             map.insert(ship.object, ship.get_models());
@@ -114,7 +115,7 @@ impl Renderer for Starfarer {
         for ship in self.ships.iter_mut() {
             map.insert(ship.object, ship.rigid_body.take().expect("Ship was created incorrectly or double loaded"));
         }
-        map.insert(self.sun, RigidBody::still(Vector3::new(10.0, 10.0, 10.0), Quaternion::new(0.0, 1.0, 0.0, 0.0)));
+        map.insert(self.sun, RigidBody::by_pos(Vector3::new(10.0, 10.0, 10.0)));
         map
     }
     

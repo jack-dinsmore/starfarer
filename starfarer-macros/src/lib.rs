@@ -5,12 +5,12 @@ use std::path::Path;
 use syn::{parse_macro_input, LitStr, LitInt, Token};
 use syn::parse::{Parse, ParseStream, Result};
 use quote::quote;
-use tools::{read_as_bytes, load_obj, load_font_to_binary};
+use tools::{load_obj, load_font_to_binary};
 use proc_macro::TokenStream;
 
 extern crate proc_macro;
 
-struct IncludeShip {
+struct IncludeModel {
     sources: Vec<String>,
     output: Vec<u8>,
 }
@@ -20,30 +20,21 @@ struct IncludeFont {
     output: (Vec<u8>, Vec<u8>),
 }
 
-impl Parse for IncludeShip {
+impl Parse for IncludeModel {
     fn parse(input: ParseStream) -> Result<Self> {
         let path_lit = input.parse::<LitStr>()?;
         let head_name = path_lit.value();
-        let info_path = format!("{}.dat", head_name);
-        let obj_path = format!("{}.obj", head_name);
-        let mtl_path = format!("{}.mtl", head_name);
+        let model_name = std::path::Path::new(&head_name).file_name().unwrap().to_str().unwrap();
+        let obj_path = format!("{}/{}.obj", head_name, model_name);
+        let mtl_path = format!("{}/{}.mtl", head_name, model_name);
 
-        let info_bytes = match read_as_bytes(&Path::new(&format!("src/{}", info_path))) {
-            Ok(o) => o,
-            Err(_) => panic!("Could not find info path {}", info_path)
+        let output = match load_obj(&Path::new(&obj_path[6..]), &Path::new(&mtl_path[6..])) {
+            Ok(h) => h,
+            Err(_) => panic!("Could not find object {} or {}", obj_path, mtl_path),
         };
-        let mut byte_data = common::ShipByteData {
-            info_bytes,
-            outside: (Vec::new(), Vec::new()),
-            inside: None,
-            transparent: None,
-        };
-        if let Err(_) = load_obj(&Path::new(&format!("src/{}", obj_path)), &Path::new(&format!("src/{}", mtl_path)), &mut byte_data) {
-            panic!("Could not find object {} or {}", obj_path, mtl_path);
-        }
-        let output = bincode::serialize(&byte_data).unwrap();
+        let output = bincode::serialize(&output).unwrap();
         Ok(Self {
-            sources: vec![info_path, obj_path, mtl_path],
+            sources: vec![obj_path, mtl_path],
             output,
         })
     }
@@ -67,7 +58,7 @@ impl Parse for IncludeFont {
     }
 }
 
-impl IncludeShip {
+impl IncludeModel {
     pub fn expand(self) -> TokenStream {
         let Self { sources, output } = self;
 
@@ -97,8 +88,8 @@ impl IncludeFont {
 }
 
 #[proc_macro]
-pub fn include_ship(tokens: TokenStream) -> TokenStream {
-    let ship: IncludeShip = parse_macro_input!(tokens as IncludeShip);
+pub fn include_model(tokens: TokenStream) -> TokenStream {
+    let ship: IncludeModel = parse_macro_input!(tokens as IncludeModel);
     ship.expand()
 }
 

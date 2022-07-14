@@ -30,7 +30,7 @@ pub mod prelude {
         graphics::{Graphics},
         backend::{Backend, RenderTask, KeyTracker, VirtualKeyCode, MouseButton},
         physics::{Object, ObjectManager, RigidBody},
-        model::{Model, TextureType, VertexType, vertex},
+        model::{Model, DrawState, TextureType, VertexType, vertex},
         shader::{self, InputType, Shader, Camera, Lights, LightFeatures, builtin},
         ui::{UserInterface, Element, ElementData, Font, color},
     };
