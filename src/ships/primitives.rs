@@ -73,11 +73,14 @@ pub struct PartID {
 #[derive(Serialize, Deserialize)]
 pub struct ShipData {
     pub id: PartID,
+    pub mass: f64,
     #[serde(with = "FakeVector")]
     pub center_of_mass: Vector3<f32>,
     #[serde(with = "FakeMatrix")]
     pub moment_of_inertia: Matrix3<f32>,
     pub attachments: Vec<PartInstance>,
+    #[serde(with = "FakeVector")]
+    pub seat_pos: Vector3<f32>,
 }
 
 #[derive(Serialize, Deserialize)]

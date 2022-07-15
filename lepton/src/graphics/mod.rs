@@ -9,14 +9,16 @@ use std::os::raw::{c_char, c_void};
 use std::ptr;
 use std::sync::mpsc::Receiver;
 use std::collections::HashMap;
-use cgmath::Vector3;
+use cgmath::{Vector3, Matrix3};
 
 use primitives::*;
 pub use crate::backend::RenderTask;
-use crate::{backend::{Backend, ThreadData}, constants::*, shader, model::DrawState, physics::Object};
+use crate::{backend::Backend, constants::*, shader, model::DrawState, physics::Object};
 use debug::ValidationInfo;
 
-pub(crate) struct GraphicsData {
+pub(crate) type GraphicsData = HashMap<Object, GraphicsInnerData>;
+
+pub(crate) struct GraphicsInnerData {
     pub push_constants: shader::builtin::ObjectPushConstants,
     pub pos: Vector3<f32>,
 }
@@ -79,9 +81,9 @@ pub struct Graphics {
 
     command_buffers: Vec<vk::CommandBuffer>,
 
-    graphics_data_receiver: Receiver<ThreadData<GraphicsData>>,
+    graphics_data_receiver: Receiver<GraphicsData>,
     pub(crate) object_models: HashMap<Object, Vec<DrawState>>,
-    last_graphics_data: HashMap<Object, GraphicsData>,
+    last_graphics_data: HashMap<Object, GraphicsInnerData>,
 
     #[cfg(target_os = "macos")]
     pub(crate) last_delta: (f64, f64),
@@ -245,9 +247,6 @@ impl Graphics {
 
         self.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
         let mut pipeline_layout = None;
-        if let Some(h) = receive_hash(&self.graphics_data_receiver) {
-            self.last_graphics_data = h;
-        }
 
         for action in actions.iter() {
             match action {
@@ -557,6 +556,12 @@ impl Graphics {
         (buffer, buffer_memory)
     }
 
+    pub(crate) fn receive(&mut self) {
+        if let Some(h) = receive_hash(&self.graphics_data_receiver) {
+            self.last_graphics_data = h;
+        }
+    }
+
     pub fn center_cursor(&mut self) {
         self.window.set_cursor_position(winit::dpi::PhysicalPosition{ x: self.window_width / 2, y: self.window_height / 2}).expect("Could not set cursor pos)");
 
@@ -576,6 +581,16 @@ impl Graphics {
     pub fn get_pos(&self, object: &Object) -> Option<Vector3<f32>> {
         if let Some(d) = self.last_graphics_data.get(object) {
             return Some(d.pos);
+        }
+        None
+    }
+
+    pub fn get_pos_and_rot(&self, object: &Object) -> Option<(Vector3<f32>, Matrix3<f32>)> {
+        if let Some(d) = self.last_graphics_data.get(object) {
+            return Some((d.pos, Matrix3::new(
+                d.push_constants.rotation.x.x, d.push_constants.rotation.x.y, d.push_constants.rotation.x.z,
+                d.push_constants.rotation.y.x, d.push_constants.rotation.y.y, d.push_constants.rotation.y.z,
+                d.push_constants.rotation.z.x, d.push_constants.rotation.z.y, d.push_constants.rotation.z.z)));
         }
         None
     }
@@ -1492,6 +1507,6 @@ impl Drop for Graphics {
     }
 }
 
-pub(crate) fn receive_hash(receiver: &Receiver<ThreadData<GraphicsData>>) -> Option<ThreadData<GraphicsData>> {
+pub(crate) fn receive_hash(receiver: &Receiver<GraphicsData>) -> Option<GraphicsData> {
     receiver.try_iter().last()
 }

@@ -4,7 +4,7 @@ mod primitives;
 mod bytecode;
 mod part;
 use lepton::prelude::*;
-use cgmath::{Vector3, Quaternion};
+use cgmath::{Vector3, Quaternion, InnerSpace};
 use lepton::prelude::vertex::VertexLP;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -99,12 +99,17 @@ pub struct Ship {
     pub inside_model: Option<Rc<Model>>,
     pub transparent_model: Option<Rc<Model>>,
     pub rigid_body: Option<RigidBody>,
+    pub seat_pos: Vector3<f32>,
     attachments: Vec<PartState>,
+
+    // For runtime
+    tasks: Vec<PhysicsTask>,
 }
 
 impl Ship {
     pub fn load(graphics: &Graphics, low_poly_shader: &Shader<builtin::LPSignature>,
-        object_manager: &mut ObjectManager, ship_loader: &mut ShipLoader, id: PartID) -> Ship {
+        object_manager: &mut ObjectManager, ship_loader: &mut ShipLoader, id: PartID,
+        pos: Vector3<f64>, vel: Vector3<f64>, orientation: Quaternion<f64>, ang_vel: Vector3<f64>) -> Ship {
 
         let data = ship_loader.load_ship_data(id);
         let models = ship_loader.acquire_models(graphics, low_poly_shader, id);
@@ -121,10 +126,9 @@ impl Ship {
             }
         }
 
-        let rigid_body = Some(RigidBody::new(Vector3::new(-5.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
-            Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0),
-            data.moment_of_inertia, data.center_of_mass
-        ));
+        let rigid_body = Some(RigidBody::new(pos, vel, orientation, ang_vel)
+            .motivate(data.mass, data.moment_of_inertia).offset(data.center_of_mass)
+        );
         let mut attachments = Vec::with_capacity(data.attachments.len());
         for attachment in data.attachments.into_iter() {
             let part_data = ship_loader.load_part_data(attachment.id);
@@ -142,7 +146,10 @@ impl Ship {
             inside_model,
             transparent_model,
             rigid_body,
+            seat_pos: data.seat_pos,
             attachments,
+
+            tasks: Vec::new(),
         }
     }
 
@@ -166,5 +173,34 @@ impl Ship {
                 attachment.matrix.clone()))
         }
         output
+    }
+
+    pub fn continuous_commands(&mut self, delta_time: f32, key_tracker: &KeyTracker) {
+        let mut ship_force = 
+              Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::Up) as u32) as f32)
+            - Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::Down) as u32) as f32)
+            + Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::Left) as u32) as f32)
+            - Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::Right) as u32) as f32)
+            + Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::RShift) as u32) as f32)
+            - Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::RAlt) as u32) as f32);
+        if ship_force.magnitude() > 0.0 {
+            ship_force *= delta_time * 20_000.0 / ship_force.magnitude();
+        }
+        self.tasks.push(PhysicsTask::AddLocalImpulse(self.object, ship_force.cast().unwrap()));
+        let mut ship_torque = 
+              Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
+            - Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)
+            + Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::A) as u32) as f32)
+            - Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::D) as u32) as f32)
+            - Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::Q) as u32) as f32)
+            + Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::E) as u32) as f32);
+        if ship_torque.magnitude() > 0.0 {
+            ship_torque *= delta_time * 10_000.0 / ship_torque.magnitude();
+        }
+        self.tasks.push(PhysicsTask::AddLocalImpulseTorque(self.object, ship_torque.cast().unwrap()));
+    }
+
+    pub fn poll_tasks(&mut self, tasks: &mut Vec<PhysicsTask>) {
+        tasks.append(&mut self.tasks);
     }
 }

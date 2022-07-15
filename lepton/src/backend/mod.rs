@@ -6,24 +6,21 @@ use winit::{event::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState},
     event_loop::{EventLoop, ControlFlow}};
 use std::sync::mpsc::{self, Sender, Receiver};
-use std::collections::HashMap;
 use std::thread;
 
 pub use fps_limiter::*;
 pub use receiver::*;
 pub use renderer::*;
 use crate::{Graphics, GraphicsData};
-use crate::physics::{Physics, Object, PhysicsData};
-
-pub(crate) type ThreadData<T> = HashMap<Object, T>;
+use crate::physics::{Physics, PhysicsData};
 
 
 pub struct Backend {
     pub(crate) event_loop: EventLoop<()>,
-    pub(crate) graphics_data_sender: Option<Sender<ThreadData<GraphicsData>>>,
-    pub(crate) graphics_data_receiver: Option<Receiver<ThreadData<GraphicsData>>>,
-    pub(crate) physics_data_sender: Option<Sender<ThreadData<PhysicsData>>>,
-    pub(crate) physics_data_receiver: Option<Receiver<ThreadData<PhysicsData>>>,
+    pub(crate) graphics_data_sender: Option<Sender<GraphicsData>>,
+    pub(crate) graphics_data_receiver: Option<Receiver<GraphicsData>>,
+    pub(crate) physics_data_sender: Option<Sender<PhysicsData>>,
+    pub(crate) physics_data_receiver: Option<Receiver<PhysicsData>>,
 }
 
 impl Backend {
@@ -55,7 +52,7 @@ impl Backend {
         if let Some(_) = self.graphics_data_receiver {
             panic!("The graphics engine did not pick up the render data receiver");
         }
-        let _physics_data_sender = match self.physics_data_sender.take() {
+        let physics_data_sender = match self.physics_data_sender.take() {
             Some(t) => t,
             None => panic!("Someone picked up the physics data sender"),
         };
@@ -149,7 +146,8 @@ impl Backend {
                 },
                 | Event::RedrawRequested(_window_id) => {
                     let delta_time = graphics_limiter.tick_frame();
-                    lepton.update(delta_time);
+                    graphics.receive();
+                    physics_data_sender.send(lepton.update(delta_time)).unwrap();
                     match graphics.begin_frame() {
                         Some(data) => {
                             let tasks = lepton.render(&graphics, data.buffer_index);

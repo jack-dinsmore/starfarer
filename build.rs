@@ -9,18 +9,20 @@ fn enterprise() {
     fs::write(Path::new(&format!("{}/kestrel/kestrel.dat", ROOT_PATH)), bincode::serialize(&ShipData {
         id: compiled::enterprise::KESTREL,
         center_of_mass: Vector3::new(0.0, 0.0, 0.0),
+        mass: 20_000.0,
         moment_of_inertia: Matrix3::new(
-            1.0, 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, 1.0,
+            50_000.0, 0.0, 0.0,
+            0.0, 50_000.0, 0.0,
+            0.0, 0.0, 50_000.0,
         ),
         attachments: vec![
             PartInstance {
                 id: compiled::enterprise::PORT,
                 orientation: Quaternion::new(1.0, 0.0, 0.0 ,0.0),
-                position: Vector3::new(0.0, 0.0, 3.0),
+                position: Vector3::new(1.067, 0.0, -0.9082),
             }
-        ]
+        ],
+        seat_pos: Vector3::new(0.3767, 0.0, 0.5515),
     }).unwrap()).unwrap();
     
     fs::write(Path::new(&format!("{}/accessories/chair.dat", ROOT_PATH)), bincode::serialize(&PartData {

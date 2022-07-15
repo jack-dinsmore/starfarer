@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::Graphics;
 use crate::model::{Model, DrawState};
-use crate::physics::{Object, RigidBody};
+use crate::physics::{Object, RigidBody, PhysicsTask};
 use crate::shader::ShaderTrait;
 use crate::ui::UserInterfaceTrait;
 
@@ -26,7 +26,7 @@ pub trait Renderer: 'static {
     /// Update all the objects. All game logic should be performed in this function call, with
     /// the render function reserved for tasks that can only be accomplished during GPU idle
     /// time.
-    fn update(&mut self, _delta_time: f32) {}
+    fn update(&mut self, _delta_time: f32) -> Vec<PhysicsTask>;
 
     /// Called only on window resize.
     fn resize(&mut self, _graphics: &Graphics) {}

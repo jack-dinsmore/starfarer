@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use cgmath::{Vector3};
 
 pub use rigid_body::*;
-use crate::backend::{Backend, ThreadData};
-use crate::GraphicsData;
+use crate::backend::{Backend};
+use crate::graphics::{GraphicsData, GraphicsInnerData};
 
-pub(crate) type PhysicsData = Vector3<f64>;
+pub(crate) type PhysicsData = Vec<PhysicsTask>;
 pub type Object = u16;
 
 
@@ -31,7 +31,7 @@ impl ObjectManager {
     }
 }
 
-enum Updater {
+pub enum Updater {
     Fixed,
     Free,
     Line,
@@ -39,7 +39,7 @@ enum Updater {
     Orbit,
 }
 
-enum Collider {
+pub enum Collider {
     None,
     Box,
     Sphere,
@@ -47,9 +47,17 @@ enum Collider {
     BoundedPlane,
 }
 
+pub enum PhysicsTask {
+    AddGlobalForce(Object, Vector3<f64>),
+    AddGlobalImpulse(Object, Vector3<f64>),
+    AddLocalForce(Object, Vector3<f64>),
+    AddLocalImpulse(Object, Vector3<f64>),
+    AddLocalImpulseTorque(Object, Vector3<f64>),
+}
+
 pub(crate) struct Physics {
-    physics_data_receiver: Receiver<ThreadData<PhysicsData>>,
-    graphics_data_sender: Sender<ThreadData<GraphicsData>>,
+    physics_data_receiver: Receiver<PhysicsData>,
+    graphics_data_sender: Sender<GraphicsData>,
 
     pub(crate) rigid_bodies: HashMap<Object, RigidBody>,
 }
@@ -77,6 +85,38 @@ impl Physics {
     }
 
     pub(crate) fn update(&mut self, delta_time: f32) {
+        // Add forces
+        for task_vec in self.physics_data_receiver.try_iter() {
+            for task in task_vec.into_iter() {
+                match task {
+                    PhysicsTask::AddGlobalForce(object, force) => {
+                        if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            rb.force += force;
+                        }
+                    },
+                    PhysicsTask::AddGlobalImpulse(object, impulse) => {
+                        if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            rb.force += impulse / delta_time as f64;
+                        }
+                    },
+                    PhysicsTask::AddLocalForce(object, force) => {
+                        if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            rb.force += rb.orientation * force;
+                        }
+                    },
+                    PhysicsTask::AddLocalImpulse(object, impulse) => {
+                        if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            rb.force += rb.orientation * impulse / delta_time as f64;
+                        }
+                    },
+                    PhysicsTask::AddLocalImpulseTorque(object, impulse) => {
+                        if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            rb.torque += rb.orientation * impulse / delta_time as f64;
+                        }
+                    },
+                }
+            }
+        }
 
         // Detect collisions
 
@@ -91,7 +131,7 @@ impl Physics {
         let mut graphics_data = HashMap::with_capacity(self.rigid_bodies.len());
         for (object, body) in &self.rigid_bodies {
             let pos = body.get_pos();
-            graphics_data.insert(*object, GraphicsData {
+            graphics_data.insert(*object, GraphicsInnerData {
                 push_constants: body.push_constants(),
                 pos: Vector3::new(pos.x as f32, pos.y as f32, pos.z as f32),
             });

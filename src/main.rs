@@ -5,28 +5,32 @@ mod skybox;
 use ships::{Ship, ShipLoader};
 use skybox::Skybox;
 use lepton::prelude::*;
-use cgmath::{prelude::*, Vector3, Point3};
+use cgmath::{prelude::*, Vector3, Matrix3, Quaternion};
 use std::collections::HashMap;
 
 const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
-const SENSITIVITY: f32 = 0.1;
+const LOOK_SENSITIVITY: f32 = 0.1;
 const NUM_SHADERS: usize = 20;
+const MOVE_SENSITIVITY: f32 = 100.0;
 
 struct Starfarer {
     low_poly_shader: Shader<builtin::LPSignature>,
     ui_shader: Shader<builtin::UISignature>,
 
     camera: Camera,
+    skybox: Skybox,
     lights: Lights,
     key_tracker: KeyTracker,
     last_deltas: (f64, f64),
 
     ships: Vec<Ship>,
     sun: Object,
-    skybox: Skybox,
 
+    player: Object,
+    control_ship: Option<usize>,
+    
     fps_menu: UserInterface<menus::FPS>,
     escape_menu: UserInterface<menus::Escape>,
     set_cursor_visible: bool,
@@ -36,7 +40,7 @@ impl Starfarer {
     fn new(graphics: &mut Graphics) -> Self {
         let low_poly_shader = Shader::new(graphics);
         let ui_shader = Shader::new(graphics);
-        let camera = Camera::new(graphics, Point3::new(2.0, 0.0, 1.0));
+        let camera = Camera::new(graphics, Vector3::new(2.0, 0.0, 1.0));
         let lights = Lights::new(graphics);
         let menu_common = menus::Common::new(graphics, &ui_shader);
         let fps_menu = menus::FPS::new(&menu_common);
@@ -45,25 +49,55 @@ impl Starfarer {
         let mut ship_loader = ShipLoader::new();
 
         let ships = vec![
-            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL)
+            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
+                Vector3::new(-10.0, 0.0, 0.0), Vector3::zero(), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::zero()),
+            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
+                Vector3::new(10.0, 0.0, 0.0), Vector3::zero(), Quaternion::new(0.0, 0.0, 0.0, 1.0), Vector3::zero()),
         ];
+        let player = object_manager.get_object();
         let sun = object_manager.get_object();
         let skybox = Skybox::from_temp(graphics);
 
         Self {
             low_poly_shader,
             ui_shader,
+
             camera,
+            skybox,
             lights,
-            fps_menu,
-            escape_menu,
             key_tracker: KeyTracker::new(),
             last_deltas: (0.0, 0.0),
+
             ships,
             sun,
-            skybox,
+
+            fps_menu,
+            escape_menu,
             set_cursor_visible: false,
+
+            player,
+            control_ship: Some(0),
         }
+    }
+
+    fn control_character(&self, delta_time: f32, tasks: &mut Vec<PhysicsTask>) {
+        let mut player_force = 
+            - Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
+            + Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)
+            - Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::A) as u32) as f32)
+            + Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::D) as u32) as f32)
+            + Vector3::unit_z() * ((self.key_tracker.get_state(VirtualKeyCode::LShift) as u32) as f32)
+            - Vector3::unit_z() * ((self.key_tracker.get_state(VirtualKeyCode::LControl) as u32) as f32);
+        if player_force.magnitude() > 0.0 {
+            player_force *= delta_time * MOVE_SENSITIVITY / player_force.magnitude();
+        }
+        tasks.push(PhysicsTask::AddGlobalImpulse(self.player, (self.camera.get_rotation() * player_force).cast().unwrap()));
+    }
+
+    fn control_ship(&mut self, delta_time: f32, ship_index: usize, tasks: &mut Vec<PhysicsTask>) {
+        let ship = &mut self.ships[ship_index];
+        ship.continuous_commands(delta_time, &self.key_tracker);
+        ship.poll_tasks(tasks);
     }
 }
 
@@ -107,6 +141,7 @@ impl Renderer for Starfarer {
             map.insert(ship.object, ship.get_models());
         }
         map.insert(self.sun, Vec::new());
+        map.insert(self.player, Vec::new());
         map
     }
 
@@ -116,6 +151,10 @@ impl Renderer for Starfarer {
             map.insert(ship.object, ship.rigid_body.take().expect("Ship was created incorrectly or double loaded"));
         }
         map.insert(self.sun, RigidBody::by_pos(Vector3::new(10.0, 10.0, 10.0)));
+        map.insert(self.player, RigidBody::new(
+            Vector3::new(2.0, 0.0, 1.0), Vector3::new(0.0, 0.0, 0.0),
+            Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0))
+            .motivate(65.0, Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)));
         map
     }
     
@@ -123,20 +162,20 @@ impl Renderer for Starfarer {
         self.lights.illuminate(self.sun, LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 2, brightness: 0.5});
     }
 
-    fn update(&mut self, delta_time: f32) {
-        self.camera.turn(-self.last_deltas.1 as f32 * SENSITIVITY * delta_time, -self.last_deltas.0 as f32 * SENSITIVITY * delta_time);
+    fn update(&mut self, delta_time: f32) -> Vec<PhysicsTask> {
+        let mut tasks = Vec::new();
+
+        self.camera.turn(-self.last_deltas.1 as f32 * LOOK_SENSITIVITY * delta_time, -self.last_deltas.0 as f32 * LOOK_SENSITIVITY * delta_time);
         self.last_deltas = (0.0, 0.0);
 
-        let mut camera_adjust = 
-            - Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
-            + Vector3::unit_x() * ((self.key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)
-            - Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::A) as u32) as f32)
-            + Vector3::unit_y() * ((self.key_tracker.get_state(VirtualKeyCode::D) as u32) as f32);
-        if camera_adjust.magnitude() > 0.0 {
-            camera_adjust *= delta_time / camera_adjust.magnitude();
-        }
-        self.camera.adjust(camera_adjust);
+        match self.control_ship {
+            Some(ship_index) => self.control_ship(delta_time, ship_index, &mut tasks),
+            None => self.control_character(delta_time, &mut tasks),
+        };
+
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
+
+        tasks
     }
     
     fn render(&mut self, graphics: &Graphics, buffer_index: usize) -> Vec<RenderTask> {
@@ -144,6 +183,16 @@ impl Renderer for Starfarer {
             graphics.set_cursor_visible(self.escape_menu.data.is_open);
         }
         // Update inputs
+        if let Some(i) = self.control_ship {
+            if let Some(data) = graphics.get_pos_and_rot(&self.ships[i].object) {
+                self.camera.set_pos(data.0 + data.1 * self.ships[i].seat_pos);
+                self.camera.set_local_rot(data.1);
+            }
+        } else {
+            if let Some(p) = graphics.get_pos(&self.player) {
+                self.camera.set_pos(p);
+            }
+        }
         self.camera.update_input(buffer_index);
         self.lights.update_input(graphics, buffer_index);
 

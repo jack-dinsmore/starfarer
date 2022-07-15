@@ -10,7 +10,7 @@ const MIN_DISTANCE: f32 = 0.05;
 const BULGE_SED: (f32, f32, f32) = (1.0, 0.7, 0.4);
 const DISK_SED: (f32, f32, f32) = (0.7, 0.6, 1.0);
 const STAR_SED_YOUNG: (f32, f32, f32) = (0.8, 0.7, 1.0);
-const STAR_SED_OLD: (f32, f32, f32) = (1.0, 0.3, 0.1);
+const STAR_SED_OLD: (f32, f32, f32) = (1.0, 0.5, 0.1);
 const DUST_SED: (f32, f32, f32) = (0.65, 0.85, 1.0);
 
 mod alg {
