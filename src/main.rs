@@ -1,12 +1,15 @@
 mod menus;
 mod ships;
 mod skybox;
+mod terrain;
 
-use ships::{Ship, ShipLoader};
 use skybox::Skybox;
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Matrix3, Quaternion};
 use std::collections::HashMap;
+
+use ships::{Ship, ShipLoader};
+use terrain::Terrain;
 
 const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
@@ -24,6 +27,7 @@ struct Starfarer {
     lights: Lights,
     key_tracker: KeyTracker,
     last_deltas: (f64, f64),
+    terrain: Terrain,
 
     ships: Vec<Ship>,
     sun: Object,
@@ -47,6 +51,7 @@ impl Starfarer {
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
         let mut ship_loader = ShipLoader::new();
+        let terrain = Terrain::new(0, 1_000.0, &mut object_manager);
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
@@ -67,6 +72,7 @@ impl Starfarer {
             lights,
             key_tracker: KeyTracker::new(),
             last_deltas: (0.0, 0.0),
+            terrain,
 
             ships,
             sun,
@@ -162,7 +168,7 @@ impl Renderer for Starfarer {
         self.lights.illuminate(self.sun, LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 2, brightness: 0.5});
     }
 
-    fn update(&mut self, delta_time: f32) -> Vec<PhysicsTask> {
+    fn update(&mut self, graphics: &Graphics, delta_time: f32) -> Vec<PhysicsTask> {
         let mut tasks = Vec::new();
 
         self.camera.turn(-self.last_deltas.1 as f32 * LOOK_SENSITIVITY * delta_time, -self.last_deltas.0 as f32 * LOOK_SENSITIVITY * delta_time);
@@ -172,6 +178,8 @@ impl Renderer for Starfarer {
             Some(ship_index) => self.control_ship(delta_time, ship_index, &mut tasks),
             None => self.control_character(delta_time, &mut tasks),
         };
+
+        self.terrain.update(graphics, &self.low_poly_shader, self.camera.get_pos().cast().unwrap());
 
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
 
@@ -205,6 +213,8 @@ impl Renderer for Starfarer {
         for ship in &self.ships {
             tasks.push(RenderTask::DrawObject(ship.object));
         }
+        self.terrain.render(&mut tasks);
+
         tasks.push(RenderTask::LoadShader(&self.ui_shader));
         tasks.push(RenderTask::DrawUI(&self.fps_menu));
 

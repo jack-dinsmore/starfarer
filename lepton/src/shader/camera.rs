@@ -73,6 +73,10 @@ impl Camera {
         self.pos = pos;
     }
 
+    pub fn get_pos(&mut self) -> &Vector3<f32> {
+        &self.pos
+    }
+
     pub fn set_local_rot(&mut self, rot: Matrix3<f32>) {
         self.local_rot = Some(rot);
     }

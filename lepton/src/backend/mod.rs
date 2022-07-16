@@ -147,7 +147,7 @@ impl Backend {
                 | Event::RedrawRequested(_window_id) => {
                     let delta_time = graphics_limiter.tick_frame();
                     graphics.receive();
-                    physics_data_sender.send(lepton.update(delta_time)).unwrap();
+                    physics_data_sender.send(lepton.update(&graphics, delta_time)).unwrap();
                     match graphics.begin_frame() {
                         Some(data) => {
                             let tasks = lepton.render(&graphics, data.buffer_index);

@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::collections::HashMap;
 
 use crate::Graphics;
@@ -10,7 +9,8 @@ use crate::ui::UserInterfaceTrait;
 pub enum RenderTask<'a> {
     DrawObject(Object),
     LoadShader(&'a dyn ShaderTrait),
-    DrawModel(&'a Rc<Model>),
+    DrawModel(&'a Model),
+    DrawModelWithObject(Object, &'a Model),
     DrawUI(&'a dyn UserInterfaceTrait),
     ClearDepthBuffer,
 }
@@ -26,7 +26,7 @@ pub trait Renderer: 'static {
     /// Update all the objects. All game logic should be performed in this function call, with
     /// the render function reserved for tasks that can only be accomplished during GPU idle
     /// time.
-    fn update(&mut self, _delta_time: f32) -> Vec<PhysicsTask>;
+    fn update(&mut self, _graphics: &Graphics, _delta_time: f32) -> Vec<PhysicsTask>;
 
     /// Called only on window resize.
     fn resize(&mut self, _graphics: &Graphics) {}

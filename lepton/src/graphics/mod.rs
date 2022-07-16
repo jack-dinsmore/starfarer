@@ -260,7 +260,7 @@ impl Graphics {
                 },
                 RenderTask::DrawObject(o) => {
                     if let Some(draw_states) = self.object_models.get(o) {
-                        if let Some(d) = self.last_graphics_data.get_mut(o) {
+                        if let Some(d) = self.last_graphics_data.get(o) {
                             for state in draw_states {
                                 match state {
                                     DrawState::Standard(model) => {
@@ -277,6 +277,13 @@ impl Graphics {
                                 };
                             }
                         }
+                    }
+                },
+                RenderTask::DrawModelWithObject(o, m) => {
+                    if let Some(d) = self.last_graphics_data.get(o) {
+                        let bytes = crate::tools::struct_as_bytes(&d.push_constants);
+                        m.render(pipeline_layout.expect("You must first load a shader"),
+                            self.command_buffers[buffer_index], buffer_index, Some(bytes));
                     }
                 },
                 RenderTask::DrawModel(m) => {

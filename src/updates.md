@@ -94,7 +94,7 @@ Ship model loaded in and started working on ship backend code.
 Accessory loading. Also rehashed ship model loading so that it's done through a loader which can be more easily generalized to mid-game loading and loading of local files. Also redid the ship model and accessories.
 
 ## To do:
-- Space ships controls
+- Docking with the other ship
 - Make sure that double-loaded ships share textures
 - Make the number of descriptor sets for models dynamically set (also, should they be allocated per model or per shader?)
 - For speed, reduce memory accesses in the draw command (to the hash table for object and for model and for the vector of draw states)
