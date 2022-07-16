@@ -17,6 +17,7 @@ struct InputUniformBuffers {
 
 pub enum InputType {
     UI,
+    Texture(u32),
     Camera,
     Lights,
     Custom(usize, usize, u32, shader::ShaderStages),
@@ -34,6 +35,7 @@ impl InputType {
         unsafe {
             match self {
                 InputType::UI => (),
+                InputType::Texture(_) => (),
                 InputType::Camera => { INPUT_UNIFORM_BUFFERS.camera = input.uniform_buffers.clone(); },
                 InputType::Lights => { INPUT_UNIFORM_BUFFERS.lights = input.uniform_buffers.clone(); },
                 InputType::Custom(i, _, _, _) => { INPUT_UNIFORM_BUFFERS.custom[*i] = input.uniform_buffers.clone(); },
@@ -45,6 +47,7 @@ impl InputType {
     pub(crate) fn get_size(&self) -> u32 {
         match self {
             InputType::UI => 0,
+            InputType::Texture(_) => 0,
             InputType::Camera => size_of::<shader::builtin::CameraData>() as u32,
             InputType::Lights => size_of::<shader::builtin::LightsData>() as u32,
             InputType::Custom(_, s, _, _) => *s as u32,
@@ -54,15 +57,24 @@ impl InputType {
     pub(crate) fn get_binding(&self) -> u32 {
         match self {
             InputType::UI => 0,
+            InputType::Texture(b) => *b,
             InputType::Camera => shader::builtin::CameraData::BINDING,
             InputType::Lights => shader::builtin::LightsData::BINDING,
             InputType::Custom(_, _, l, _) => *l,
         }
     }
 
+    pub(crate) fn get_descriptor_type(&self) -> vk::DescriptorType {
+        match self {
+            InputType::UI | InputType::Camera | InputType::Lights | InputType::Custom(..) => vk::DescriptorType::UNIFORM_BUFFER,
+            InputType::Texture(_) => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        }
+    }
+
     pub(crate) fn get_stages(&self) -> vk::ShaderStageFlags {
         vk::ShaderStageFlags::from_raw(match self {
             InputType::UI => 0,
+            InputType::Texture(_) => shader::ShaderStages::FRAGMENT.f,
             InputType::Camera => shader::builtin::CameraData::STAGES.f,
             InputType::Lights => shader::builtin::LightsData::STAGES.f,
             InputType::Custom(_, _, _, s) => s.f,
@@ -84,6 +96,7 @@ impl InputType {
         unsafe {
             match self {
                 InputType::UI => None,
+                InputType::Texture(_) => None,
                 InputType::Camera => Some(INPUT_UNIFORM_BUFFERS.camera[buffer_index]),
                 InputType::Lights => Some(INPUT_UNIFORM_BUFFERS.lights[buffer_index]),
                 InputType::Custom(i, _, _, _) => Some(INPUT_UNIFORM_BUFFERS.custom[*i][buffer_index]),

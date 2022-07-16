@@ -33,6 +33,7 @@ impl shader::Signature for ModelSignature {
     const INPUTS: &'static [shader::InputType] = &[
         shader::InputType::Camera,
         shader::InputType::Lights,
+        shader::InputType::Texture(0),
     ];
 }
 
@@ -42,7 +43,9 @@ impl shader::Signature for UISignature {
     type PushConstants = UIPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.frag", kind: frag);
-    const INPUTS: &'static [shader::InputType] = &[];
+    const INPUTS: &'static [shader::InputType] = &[
+        shader::InputType::Texture(0),
+    ];
 }
 
 pub struct LPSignature;

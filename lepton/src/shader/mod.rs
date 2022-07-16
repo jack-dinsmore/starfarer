@@ -392,20 +392,12 @@ impl Graphics {
             ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
                 // Shader uniform
                 binding: input_type.get_binding(),
-                descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_type: input_type.get_descriptor_type(),
                 descriptor_count: 1,
                 stage_flags: input_type.get_stages(),
                 p_immutable_samplers: ptr::null(),
             });
         }
-        ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
-            // Texture sampler
-            binding: 0,
-            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: 1,
-            stage_flags: vk::ShaderStageFlags::FRAGMENT,
-            p_immutable_samplers: ptr::null(),
-        });
 
         let ubo_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
             s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,

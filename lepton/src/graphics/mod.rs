@@ -7,7 +7,7 @@ use winit::event_loop::EventLoop;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 use std::collections::HashMap;
 use cgmath::{Vector3, Matrix3};
 
@@ -21,6 +21,13 @@ pub(crate) type GraphicsData = HashMap<Object, GraphicsInnerData>;
 pub(crate) struct GraphicsInnerData {
     pub push_constants: shader::builtin::ObjectPushConstants,
     pub pos: Vector3<f32>,
+}
+
+pub(crate) enum Deletable {
+    Buffer(vk::Buffer, vk::DeviceMemory),
+    Sampler(vk::Sampler, vk::ImageView),
+    DescriptorSets(Vec<vk::DescriptorSet>),
+    Image(vk::Image, vk::DeviceMemory),
 }
 
 pub(crate) static mut DEVICE: Option<ash::Device> = None;
@@ -82,6 +89,8 @@ pub struct Graphics {
     command_buffers: Vec<vk::CommandBuffer>,
 
     graphics_data_receiver: Receiver<GraphicsData>,
+    delete_receiver: Receiver<Deletable>,
+    pub(crate) delete_sender: Sender<Deletable>,
     pub(crate) object_models: HashMap<Object, Vec<DrawState>>,
     last_graphics_data: HashMap<Object, GraphicsInnerData>,
 
@@ -113,6 +122,8 @@ impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
     pub fn new(backend: &mut Backend, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
         input_types: Vec<shader::InputType>, num_shaders: usize) -> Self {
+
+        let (delete_sender, delete_receiver) = std::sync::mpsc::channel();
 
         let window = Graphics::init_window(&backend.event_loop, window_title, window_width, window_height);
 
@@ -209,10 +220,11 @@ impl Graphics {
             graphics_data_receiver,
             object_models: HashMap::new(),
             last_graphics_data: HashMap::new(),
+            delete_sender,
+            delete_receiver,
 
             #[cfg(target_os = "macos")]
             last_delta: (0.0, 0.0),
-
         }
     }
 
@@ -244,6 +256,8 @@ impl Graphics {
                 vk::CommandBufferResetFlags::empty(),
             ).expect("Resetting the command buffer failed");
         }
+
+        self.delete_all();
 
         self.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
         let mut pipeline_layout = None;
@@ -1365,7 +1379,7 @@ impl Graphics {
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo {
             s_type: vk::StructureType::DESCRIPTOR_POOL_CREATE_INFO,
             p_next: ptr::null(),
-            flags: vk::DescriptorPoolCreateFlags::empty(),
+            flags: vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET, //// REMOVE THIS IF DESCRIPTOR SETS ARE LATER NOT FREED
             max_sets: (num_samplers + num_uniforms) as u32,
             pool_size_count: pool_sizes.len() as u32,
             p_pool_sizes: pool_sizes.as_ptr(),
@@ -1500,6 +1514,30 @@ impl Graphics {
         unsafe {
             crate::get_device().allocate_command_buffers(&command_buffer_allocate_info)
                 .expect("Failed to allocate command buffers!")
+        }
+    }
+
+    fn delete_all(&self) {
+        for deletable in self.delete_receiver.try_iter() {
+            unsafe {
+                match deletable {
+                    Deletable::Buffer(b, m) => {
+                        crate::get_device().destroy_buffer(b, None);
+                        crate::get_device().free_memory(m, None);
+                    },
+                    Deletable::Sampler(s, v) => {
+                        crate::get_device().destroy_sampler(s, None);
+                        crate::get_device().destroy_image_view(v, None);
+                    },
+                    Deletable::Image(i, m) => {
+                        crate::get_device().destroy_image(i, None);
+                        crate::get_device().free_memory(m, None);
+                    },
+                    Deletable::DescriptorSets(v) => {
+                        crate::get_device().free_descriptor_sets(self.descriptor_pool, &v).unwrap();
+                    }
+                }
+            }
         }
     }
 }

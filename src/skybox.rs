@@ -10,6 +10,7 @@ impl shader::Signature for SkyboxSignature {
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shaders/skybox.frag", kind: frag);
     const INPUTS: &'static [shader::InputType] = &[
         shader::InputType::Camera,
+        shader::InputType::Texture(0),
     ];
 }
 

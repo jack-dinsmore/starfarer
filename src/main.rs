@@ -1,7 +1,7 @@
 mod menus;
 mod ships;
 mod skybox;
-mod terrain;
+mod planet;
 
 use skybox::Skybox;
 use lepton::prelude::*;
@@ -9,13 +9,13 @@ use cgmath::{prelude::*, Vector3, Matrix3, Quaternion};
 use std::collections::HashMap;
 
 use ships::{Ship, ShipLoader};
-use terrain::Terrain;
+use planet::Planet;
 
 const WINDOW_TITLE: &'static str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const LOOK_SENSITIVITY: f32 = 0.1;
-const NUM_SHADERS: usize = 20;
+const NUM_SHADERS: usize = 50;
 const MOVE_SENSITIVITY: f32 = 100.0;
 
 struct Starfarer {
@@ -27,7 +27,7 @@ struct Starfarer {
     lights: Lights,
     key_tracker: KeyTracker,
     last_deltas: (f64, f64),
-    terrain: Terrain,
+    planet: Planet,
 
     ships: Vec<Ship>,
     sun: Object,
@@ -51,7 +51,7 @@ impl Starfarer {
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
         let mut ship_loader = ShipLoader::new();
-        let terrain = Terrain::new(0, 1_000.0, &mut object_manager);
+        let planet = Planet::new(0, 1_000.0, &mut object_manager);
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
@@ -72,7 +72,7 @@ impl Starfarer {
             lights,
             key_tracker: KeyTracker::new(),
             last_deltas: (0.0, 0.0),
-            terrain,
+            planet,
 
             ships,
             sun,
@@ -161,6 +161,7 @@ impl Renderer for Starfarer {
             Vector3::new(2.0, 0.0, 1.0), Vector3::new(0.0, 0.0, 0.0),
             Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0))
             .motivate(65.0, Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)));
+        self.planet.init_rigid_body(&mut map);
         map
     }
     
@@ -179,7 +180,7 @@ impl Renderer for Starfarer {
             None => self.control_character(delta_time, &mut tasks),
         };
 
-        self.terrain.update(graphics, &self.low_poly_shader, self.camera.get_pos().cast().unwrap());
+        self.planet.update(graphics, &self.low_poly_shader, self.camera.get_pos());
 
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
 
@@ -213,7 +214,7 @@ impl Renderer for Starfarer {
         for ship in &self.ships {
             tasks.push(RenderTask::DrawObject(ship.object));
         }
-        self.terrain.render(&mut tasks);
+        self.planet.render(&mut tasks);
 
         tasks.push(RenderTask::LoadShader(&self.ui_shader));
         tasks.push(RenderTask::DrawUI(&self.fps_menu));

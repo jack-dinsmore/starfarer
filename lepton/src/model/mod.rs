@@ -4,10 +4,11 @@ use std::ptr;
 use std::cmp::max;
 use std::rc::Rc;
 use cgmath::Matrix4;
+use std::sync::mpsc::Sender;
 
 pub mod vertex;
 use vertex::*;
-use crate::{Graphics};
+use crate::graphics::{Graphics, Deletable};
 use crate::shader::{Shader, Signature};
 
 const BLANK_WIDTH: u32 = 4;
@@ -27,6 +28,7 @@ pub struct Model {
     pub(crate) texture_image_memory: vk::DeviceMemory,
     texture_sampler: vk::Sampler,
     _mip_levels: u32,
+    delete_sender: Option<Sender<Deletable>>,
     
     descriptor_sets: Vec<vk::DescriptorSet>,
 }
@@ -159,6 +161,7 @@ impl Model {
             texture_image_view,
             texture_sampler,
             texture_image_memory,
+            delete_sender: Some(graphics.delete_sender.clone()),
 
             descriptor_sets,
         };
@@ -179,6 +182,7 @@ impl Model {
             texture_image_view: vk::ImageView::null(),
             texture_sampler: vk::Sampler::null(),
             texture_image_memory: vk::DeviceMemory::null(),
+            delete_sender: None,
 
             descriptor_sets: Vec::new(),
         })
@@ -225,22 +229,12 @@ impl Model {
 
 impl Drop for Model {
     fn drop(&mut self) {
-        unsafe {
-            if let Some(device) = &crate::graphics::DEVICE {
-                device.destroy_buffer(self.vertex_buffer, None);
-                device.free_memory(self.vertex_buffer_memory, None);
-
-                device.destroy_buffer(self.index_buffer, None);
-                device.free_memory(self.index_buffer_memory, None);
-
-                if self.texture_sampler != vk::Sampler::null() {
-                    device.destroy_sampler(self.texture_sampler, None);
-                    device.destroy_image_view(self.texture_image_view, None);
-                
-                    device.destroy_image(self.texture_image, None);
-                    device.free_memory(self.texture_image_memory, None);
-                }
-            }
+        self.delete_sender.as_ref().unwrap().send(Deletable::Buffer(self.vertex_buffer, self.vertex_buffer_memory)).unwrap_or(());
+        self.delete_sender.as_ref().unwrap().send(Deletable::Buffer(self.index_buffer, self.index_buffer_memory)).unwrap_or(());
+        self.delete_sender.as_ref().unwrap().send(Deletable::DescriptorSets(self.descriptor_sets.clone())).unwrap_or(());
+        if self.texture_sampler != vk::Sampler::null() {
+            self.delete_sender.as_ref().unwrap().send(Deletable::Sampler(self.texture_sampler, self.texture_image_view)).unwrap_or(());
+            self.delete_sender.as_ref().unwrap().send(Deletable::Image(self.texture_image, self.texture_image_memory)).unwrap_or(());
         }
     }
 }
@@ -499,36 +493,28 @@ impl Graphics {
                 locations.push(input_type.get_binding());
             }
 
-            for j in 0..S::INPUTS.len() {
-                descriptor_write_sets.push(
-                    vk::WriteDescriptorSet {
-                        s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
-                        p_next: ptr::null(),
-                        dst_set: descritptor_set,
-                        dst_binding: locations[j],
-                        dst_array_element: 0,
-                        descriptor_count: 1,
-                        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-                        p_image_info: ptr::null(),
-                        p_buffer_info: descriptor_buffer_infos[j][i].as_ptr(),
-                        p_texel_buffer_view: ptr::null(),
-                    }
-                )
-            }
-            if texture_image_view != vk::ImageView::null() {
-                descriptor_write_sets.push(vk::WriteDescriptorSet {
-                    // sampler uniform
+            for (j, input) in S::INPUTS.iter().enumerate() {
+                let mut write_descriptor_set = vk::WriteDescriptorSet {
                     s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
                     p_next: ptr::null(),
                     dst_set: descritptor_set,
-                    dst_binding: 0,
+                    dst_binding: locations[j],
                     dst_array_element: 0,
                     descriptor_count: 1,
-                    descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                    p_image_info: descriptor_image_infos.as_ptr(),
-                    p_buffer_info: ptr::null(),
+                    descriptor_type: input.get_descriptor_type(),
+                    p_image_info: ptr::null(),
+                    p_buffer_info: descriptor_buffer_infos[j][i].as_ptr(),
                     p_texel_buffer_view: ptr::null(),
-                });
+                };
+                if input.get_descriptor_type() == vk::DescriptorType::UNIFORM_BUFFER {
+                    write_descriptor_set.p_buffer_info = descriptor_buffer_infos[j][i].as_ptr();
+                } else if input.get_descriptor_type() == vk::DescriptorType::COMBINED_IMAGE_SAMPLER {
+                    write_descriptor_set.p_image_info = descriptor_image_infos.as_ptr();
+                }
+                descriptor_write_sets.push(write_descriptor_set);
+            }
+            if texture_image_view != vk::ImageView::null() {
+                
             }
 
                 unsafe {
