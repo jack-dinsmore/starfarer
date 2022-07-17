@@ -79,7 +79,7 @@ impl RigidBody {
         let rotation = Matrix4::from(Matrix3::from(self.orientation.cast().unwrap()));
         builtin::ObjectPushConstants {
             model: Matrix4::from_translation(self.pos.cast().unwrap() + self.model_offset) * rotation,
-            rotation: rotation,
+            rotation,
         }
     }
 

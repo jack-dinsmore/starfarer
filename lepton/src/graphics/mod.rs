@@ -8,7 +8,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 use std::sync::mpsc::{Receiver, Sender};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use cgmath::{Vector3, Matrix3};
 
 use primitives::*;
@@ -16,13 +16,14 @@ pub use crate::backend::RenderTask;
 use crate::{backend::Backend, constants::*, shader, model::DrawState, physics::Object};
 use debug::ValidationInfo;
 
-pub(crate) type GraphicsData = HashMap<Object, GraphicsInnerData>;
+pub(crate) type GraphicsData = FxHashMap<Object, GraphicsInnerData>;
 
 pub(crate) struct GraphicsInnerData {
     pub push_constants: shader::builtin::ObjectPushConstants,
     pub pos: Vector3<f32>,
 }
 
+#[derive(Clone)]
 pub(crate) enum Deletable {
     Buffer(vk::Buffer, vk::DeviceMemory),
     Sampler(vk::Sampler, vk::ImageView),
@@ -90,9 +91,10 @@ pub struct Graphics {
 
     graphics_data_receiver: Receiver<GraphicsData>,
     delete_receiver: Receiver<Deletable>,
+    delete_queue: Vec<Vec<Deletable>>,
     pub(crate) delete_sender: Sender<Deletable>,
-    pub(crate) object_models: HashMap<Object, Vec<DrawState>>,
-    last_graphics_data: HashMap<Object, GraphicsInnerData>,
+    pub(crate) object_models: FxHashMap<Object, Vec<DrawState>>,
+    last_graphics_data: FxHashMap<Object, GraphicsInnerData>,
 
     #[cfg(target_os = "macos")]
     pub(crate) last_delta: (f64, f64),
@@ -129,7 +131,7 @@ impl Graphics {
 
         // Create basic Vulkan stuff
         let entry = ash::Entry::linked();
-        let instance = Graphics::create_instance(&entry, window_title, VALIDATION.is_enable, &VALIDATION.required_validation_layers.to_vec());
+        let instance = Graphics::create_instance(&entry, window_title, VALIDATION.is_enable, VALIDATION.required_validation_layers.as_ref());
         let surface_stuff = Graphics::create_surface(&entry, &instance, &window, window_width, window_height);
         let (_debug_utils_loader, _debug_messenger) = debug::setup_debug_utils(VALIDATION.is_enable, &entry, &instance);
         let physical_device = Graphics::pick_physical_device(&instance, &surface_stuff, &DEVICE_EXTENSIONS);
@@ -141,18 +143,18 @@ impl Graphics {
         let present_queue = unsafe { get_device().get_device_queue(queue_family.present_family.unwrap(), 0) };
 
         // Create swapchain
-        let swapchain_stuff = Graphics::create_swapchain(&instance, &get_device(), physical_device, &window, &surface_stuff, &queue_family);
-        let swapchain_imageviews = Graphics::create_image_views(&get_device(), swapchain_stuff.swapchain_format, &swapchain_stuff.swapchain_images);
-        let render_pass = Graphics::create_render_pass(&instance, &get_device(), physical_device, swapchain_stuff.swapchain_format, msaa_samples);
-        let command_pool = Graphics::create_command_pool(&get_device(), &queue_family);
-        let descriptor_pool = Graphics::create_descriptor_pool(&get_device(), swapchain_stuff.swapchain_images.len(), input_types.len(), num_shaders);
+        let swapchain_stuff = Graphics::create_swapchain(&instance, get_device(), physical_device, &window, &surface_stuff, &queue_family);
+        let swapchain_imageviews = Graphics::create_image_views(get_device(), swapchain_stuff.swapchain_format, &swapchain_stuff.swapchain_images);
+        let render_pass = Graphics::create_render_pass(&instance, get_device(), physical_device, swapchain_stuff.swapchain_format, msaa_samples);
+        let command_pool = Graphics::create_command_pool(get_device(), &queue_family);
+        let descriptor_pool = Graphics::create_descriptor_pool(get_device(), swapchain_stuff.swapchain_images.len(), input_types.len(), num_shaders);
         let (color_image, color_image_view, color_image_memory) = Graphics::create_color_resources(
-                &get_device(), swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, physical_device_memory_properties, msaa_samples);
-        let (depth_image, depth_image_view, depth_image_memory) = Graphics::create_depth_resources(&instance, &get_device(), physical_device,
-            command_pool, graphics_queue, swapchain_stuff.swapchain_extent, physical_device_memory_properties, msaa_samples);
+                get_device(), swapchain_stuff.swapchain_format, swapchain_stuff.swapchain_extent, physical_device_memory_properties, msaa_samples);
+        let (depth_image, depth_image_view, depth_image_memory) = Graphics::create_depth_resources(&instance, get_device(), physical_device,
+            swapchain_stuff.swapchain_extent, physical_device_memory_properties, msaa_samples);
         let framebuffers = Graphics::create_framebuffers(
-            &get_device(), render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
-        let sync_objects = Graphics::create_sync_objects(&get_device(), MAX_FRAMES_IN_FLIGHT);
+            get_device(), render_pass, &swapchain_imageviews, depth_image_view, color_image_view, swapchain_stuff.swapchain_extent);
+        let sync_objects = Graphics::create_sync_objects(get_device(), MAX_FRAMES_IN_FLIGHT);
 
         if center_cursor {
             window.set_cursor_position(winit::dpi::PhysicalPosition{ x: window_width / 2, y: window_height / 2}).expect("Could not set cursor pos");
@@ -165,6 +167,8 @@ impl Graphics {
             Some(r) => r,
             None => panic!("Someone picked up the graphics data receiver")
         };
+
+        let delete_queue = vec![Vec::new(); framebuffers.len()];
 
         Graphics {
             window,
@@ -218,10 +222,11 @@ impl Graphics {
             command_buffers,
 
             graphics_data_receiver,
-            object_models: HashMap::new(),
-            last_graphics_data: HashMap::new(),
+            object_models: FxHashMap::default(),
+            last_graphics_data: FxHashMap::default(),
             delete_sender,
             delete_receiver,
+            delete_queue,
 
             #[cfg(target_os = "macos")]
             last_delta: (0.0, 0.0),
@@ -257,7 +262,7 @@ impl Graphics {
             ).expect("Resetting the command buffer failed");
         }
 
-        self.delete_all();
+        self.delete_all(buffer_index);
 
         self.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
         let mut pipeline_layout = None;
@@ -283,7 +288,7 @@ impl Graphics {
                                         self.command_buffers[buffer_index], buffer_index, Some(bytes))
                                     },
                                     DrawState::Offset(model, matrix) => {
-                                        let new_pc = d.push_constants.model.clone() * matrix;
+                                        let new_pc = d.push_constants.model * matrix;
                                         let bytes = crate::tools::struct_as_bytes(&new_pc);
                                         model.render(pipeline_layout.expect("You must first load a shader"),
                                         self.command_buffers[buffer_index], buffer_index, Some(bytes));
@@ -630,8 +635,8 @@ impl Graphics {
     }
 
     /// Create the Vulkan instance. Panics if validation layers (for debugging) are not supported or if the instance fails to create.
-    fn create_instance(entry: &ash::Entry, window_title: &str, is_enable_debug: bool, required_validation_layers: &Vec<&str>) -> ash::Instance {
-        if is_enable_debug && debug::check_validation_layer_support(entry, required_validation_layers) == false {
+    fn create_instance(entry: &ash::Entry, window_title: &str, is_enable_debug: bool, required_validation_layers: &[&str]) -> ash::Instance {
+        if is_enable_debug && !debug::check_validation_layer_support(entry, required_validation_layers) {
             panic!("Validation layers requested, but not available!");
         }
     
@@ -751,15 +756,14 @@ impl Graphics {
         };
     
         let result = physical_devices.iter().find(|physical_device| {
-            let is_suitable = Graphics::is_physical_device_suitable(instance, **physical_device, surface_stuff, required_device_extensions);
+            Graphics::is_physical_device_suitable(instance, **physical_device, surface_stuff, required_device_extensions)
     
             // if is_suitable {
             //     let device_properties = instance.get_physical_device_properties(**physical_device);
             //     let device_name = super::tools::vk_to_string(&device_properties.device_name);
             //     println!("Using GPU: {}", device_name);
             // }
-    
-            is_suitable
+            //is_suitable
         });
     
         match result {
@@ -784,7 +788,7 @@ impl Graphics {
         };
         let is_support_sampler_anisotropy = device_features.sampler_anisotropy == 1;
     
-        return is_queue_family_supported && is_device_extension_supported && is_swapchain_supported && is_support_sampler_anisotropy;
+        is_queue_family_supported && is_device_extension_supported && is_swapchain_supported && is_support_sampler_anisotropy
     }
 
     fn find_queue_family(instance: &ash::Instance, physical_device: vk::PhysicalDevice, surface_stuff: &SurfaceStuff) -> QueueFamilyIndices {
@@ -792,10 +796,9 @@ impl Graphics {
 
         let mut queue_family_indices = QueueFamilyIndices::new();
 
-        let mut index = 0;
-        for queue_family in queue_families.iter() {
+        for (index, queue_family) in queue_families.iter().enumerate() {
             if queue_family.queue_count > 0 && queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
-                queue_family_indices.graphics_family = Some(index);
+                queue_family_indices.graphics_family = Some(index as u32);
             }
 
             let is_present_support = unsafe {
@@ -808,20 +811,19 @@ impl Graphics {
                     ).expect("Failed to get physical device surface support!")
             };
             if queue_family.queue_count > 0 && is_present_support {
-                queue_family_indices.present_family = Some(index);
+                queue_family_indices.present_family = Some(index as u32);
             }
 
             if queue_family_indices.is_complete() {
                 break;
             }
-
-            index += 1;
         }
 
         queue_family_indices
     }
 
     fn check_device_extension_support(instance: &ash::Instance, physical_device: vk::PhysicalDevice, device_extensions: &DeviceExtension) -> bool {
+        #![allow(clippy::disallowed_types)]
         let available_extensions = unsafe {
             instance.enumerate_device_extension_properties(physical_device)
                 .expect("Failed to get device extension properties.")
@@ -845,7 +847,7 @@ impl Graphics {
             required_extensions.remove(extension_name);
         }
 
-        return required_extensions.is_empty();
+        required_extensions.is_empty()
     }
 
     fn query_swapchain_support(physical_device: vk::PhysicalDevice, surface_stuff: &SurfaceStuff) -> SwapChainSupportDetail {
@@ -973,6 +975,8 @@ impl Graphics {
 
     fn create_logical_device(instance: &ash::Instance, physical_device: vk::PhysicalDevice, validation: &debug::ValidationInfo,
         device_extensions: &DeviceExtension, surface_stuff: &SurfaceStuff) -> (ash::Device, QueueFamilyIndices) {
+
+        #![allow(clippy::disallowed_types)]
         let indices = Graphics::find_queue_family(instance, physical_device, surface_stuff);
     
         use std::collections::HashSet;
@@ -1127,28 +1131,28 @@ impl Graphics {
             screen_height: self.window_height,
         };
 
-        let swapchain_stuff = Graphics::create_swapchain(&self.instance, &get_device(), self.physical_device, &self.window, &surface_suff, &self.queue_family);
+        let swapchain_stuff = Graphics::create_swapchain(&self.instance, get_device(), self.physical_device, &self.window, &surface_suff, &self.queue_family);
         self.swapchain_loader = swapchain_stuff.swapchain_loader;
         self.swapchain = swapchain_stuff.swapchain;
         self.swapchain_images = swapchain_stuff.swapchain_images;
         self.swapchain_format = swapchain_stuff.swapchain_format;
         self.swapchain_extent = swapchain_stuff.swapchain_extent;
 
-        self.swapchain_imageviews = Graphics::create_image_views(&get_device(), self.swapchain_format, &self.swapchain_images);
-        self.render_pass = Graphics::create_render_pass(&self.instance, &get_device(), self.physical_device, self.swapchain_format, self.msaa_samples);
-        let color_resources = Graphics::create_color_resources(&get_device(), self.swapchain_format,
+        self.swapchain_imageviews = Graphics::create_image_views(get_device(), self.swapchain_format, &self.swapchain_images);
+        self.render_pass = Graphics::create_render_pass(&self.instance, get_device(), self.physical_device, self.swapchain_format, self.msaa_samples);
+        let color_resources = Graphics::create_color_resources(get_device(), self.swapchain_format,
             self.swapchain_extent, self.memory_properties, self.msaa_samples);
         self.color_image = color_resources.0;
         self.color_image_view = color_resources.1;
         self.color_image_memory = color_resources.2;
 
-        let depth_resources = Graphics::create_depth_resources(&self.instance, &get_device(), self.physical_device,
-            self.command_pool, self.graphics_queue, self.swapchain_extent, self.memory_properties, self.msaa_samples);
+        let depth_resources = Graphics::create_depth_resources(&self.instance, get_device(), self.physical_device,
+            self.swapchain_extent, self.memory_properties, self.msaa_samples);
         self.depth_image = depth_resources.0;
         self.depth_image_view = depth_resources.1;
         self.depth_image_memory = depth_resources.2;
 
-        self.framebuffers = Graphics::create_framebuffers(&get_device(), self.render_pass, &self.swapchain_imageviews,
+        self.framebuffers = Graphics::create_framebuffers(get_device(), self.render_pass, &self.swapchain_imageviews,
             self.depth_image_view, self.color_image_view, self.swapchain_extent);
     }
 
@@ -1158,14 +1162,14 @@ impl Graphics {
             if available_format.format == vk::Format::B8G8R8A8_SRGB
                 && available_format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             {
-                return available_format.clone();
+                return *available_format;
             }
         }
 
-        return available_formats.first().unwrap().clone();
+        return *available_formats.first().unwrap();
     }
 
-    fn choose_swapchain_present_mode(available_present_modes: &Vec<vk::PresentModeKHR>) -> vk::PresentModeKHR {
+    fn choose_swapchain_present_mode(available_present_modes: &[vk::PresentModeKHR]) -> vk::PresentModeKHR {
         for &available_present_mode in available_present_modes.iter() {
             if available_present_mode == vk::PresentModeKHR::MAILBOX {
                 return available_present_mode;
@@ -1203,7 +1207,7 @@ impl Graphics {
         }
     }
 
-    fn create_image_views(device: &ash::Device, surface_format: vk::Format, images: &Vec<vk::Image>) -> Vec<vk::ImageView> {
+    fn create_image_views(device: &ash::Device, surface_format: vk::Format, images: &[vk::Image]) -> Vec<vk::ImageView> {
         let swapchain_imageviews: Vec<vk::ImageView> = images
             .iter()
             .map(|&image| {
@@ -1268,8 +1272,7 @@ impl Graphics {
         panic!("Failed to find suitable memory type!")
     }
     
-    fn create_depth_resources(instance: &ash::Instance, device: &ash::Device,  physical_device: vk::PhysicalDevice, _command_pool: vk::CommandPool,
-        _submit_queue: vk::Queue, swapchain_extent: vk::Extent2D, device_memory_properties: vk::PhysicalDeviceMemoryProperties,
+    fn create_depth_resources(instance: &ash::Instance, device: &ash::Device,  physical_device: vk::PhysicalDevice, swapchain_extent: vk::Extent2D, device_memory_properties: vk::PhysicalDeviceMemoryProperties,
         msaa_samples: vk::SampleCountFlags) -> (vk::Image, vk::ImageView, vk::DeviceMemory) {
 
         let depth_format = Graphics::find_depth_format(instance, physical_device);
@@ -1315,21 +1318,16 @@ impl Graphics {
         for &format in candidate_formats.iter() {
             let format_properties =
                 unsafe { instance.get_physical_device_format_properties(physical_device, format) };
-            if tiling == vk::ImageTiling::LINEAR
-                && format_properties.linear_tiling_features.contains(features)
-            {
-                return format.clone();
-            } else if tiling == vk::ImageTiling::OPTIMAL
-                && format_properties.optimal_tiling_features.contains(features)
-            {
-                return format.clone();
+            if (tiling == vk::ImageTiling::LINEAR && format_properties.linear_tiling_features.contains(features))
+                || (tiling == vk::ImageTiling::OPTIMAL && format_properties.optimal_tiling_features.contains(features)) {
+                return format;
             }
         }
     
         panic!("Failed to find supported format!")
     }
 
-    fn create_framebuffers(device: &ash::Device, render_pass: vk::RenderPass, swapchain_image_views: &Vec<vk::ImageView>,
+    fn create_framebuffers(device: &ash::Device, render_pass: vk::RenderPass, swapchain_image_views: &[vk::ImageView],
         depth_image_view: vk::ImageView, color_image_view: vk::ImageView, swapchain_extent: vk::Extent2D) -> Vec<vk::Framebuffer> {
         let mut framebuffers = vec![];
 
@@ -1517,27 +1515,34 @@ impl Graphics {
         }
     }
 
-    fn delete_all(&self) {
-        for deletable in self.delete_receiver.try_iter() {
+    fn delete_all(&mut self, buffer_index: usize) {
+        // Delete all buffes that were indicated for deletion at this frame
+        for deletable in &self.delete_queue[buffer_index] {
             unsafe {
                 match deletable {
                     Deletable::Buffer(b, m) => {
-                        crate::get_device().destroy_buffer(b, None);
-                        crate::get_device().free_memory(m, None);
+                        crate::get_device().destroy_buffer(*b, None);
+                        crate::get_device().free_memory(*m, None);
                     },
                     Deletable::Sampler(s, v) => {
-                        crate::get_device().destroy_sampler(s, None);
-                        crate::get_device().destroy_image_view(v, None);
+                        crate::get_device().destroy_sampler(*s, None);
+                        crate::get_device().destroy_image_view(*v, None);
                     },
                     Deletable::Image(i, m) => {
-                        crate::get_device().destroy_image(i, None);
-                        crate::get_device().free_memory(m, None);
+                        crate::get_device().destroy_image(*i, None);
+                        crate::get_device().free_memory(*m, None);
                     },
                     Deletable::DescriptorSets(v) => {
                         crate::get_device().free_descriptor_sets(self.descriptor_pool, &v).unwrap();
                     }
                 }
             }
+        }
+        self.delete_queue[buffer_index].clear();
+
+        // Indicate new buffers for deletion
+        for deletable in self.delete_receiver.try_iter() {
+            self.delete_queue[buffer_index].push(deletable);
         }
     }
 }

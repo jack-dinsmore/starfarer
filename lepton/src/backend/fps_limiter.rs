@@ -22,14 +22,8 @@ impl FPSLimiter {
         }
     }
     pub fn with_limits(lower: Option<u32>, upper: Option<u32>) -> FPSLimiter {
-        let lower_frame_time = match lower {
-            Some(fps) => Some(1_000_000 / fps),
-            None => None,
-        };
-        let upper_frame_time = match upper {
-            Some(fps) => Some(1_000_000 / fps),
-            None => None,
-        };
+        let lower_frame_time = lower.map(|fps| {1_000_000 / fps} );
+        let upper_frame_time = upper.map(|fps| {1_000_000 / fps} );
         FPSLimiter {
             counter: Instant::now(),
             lower_frame_time,

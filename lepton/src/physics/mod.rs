@@ -1,7 +1,7 @@
 mod rigid_body;
 
 use std::sync::mpsc::{Receiver, Sender};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use cgmath::{Vector3};
 
 pub use rigid_body::*;
@@ -59,7 +59,7 @@ pub(crate) struct Physics {
     physics_data_receiver: Receiver<PhysicsData>,
     graphics_data_sender: Sender<GraphicsData>,
 
-    pub(crate) rigid_bodies: HashMap<Object, RigidBody>,
+    pub(crate) rigid_bodies: FxHashMap<Object, RigidBody>,
 }
 
 impl Physics {
@@ -76,7 +76,7 @@ impl Physics {
         Physics {
             physics_data_receiver,
             graphics_data_sender,
-            rigid_bodies: HashMap::new(),
+            rigid_bodies: FxHashMap::default(),
         }
     }
 
@@ -123,12 +123,12 @@ impl Physics {
         // Resolve collisions
 
         // Update body position
-        for (_, body) in &mut self.rigid_bodies {
+        for body in self.rigid_bodies.values_mut() {
             body.update(delta_time as f64);
         }
 
         // Send data to graphics
-        let mut graphics_data = HashMap::with_capacity(self.rigid_bodies.len());
+        let mut graphics_data = FxHashMap::default();//with_capacity(self.rigid_bodies.len());
         for (object, body) in &self.rigid_bodies {
             let pos = body.get_pos();
             graphics_data.insert(*object, GraphicsInnerData {
@@ -137,9 +137,6 @@ impl Physics {
             });
         }
 
-        match self.graphics_data_sender.send(graphics_data) {
-            Ok(_) => (),
-            Err(_) => return
-        };
+        self.graphics_data_sender.send(graphics_data).unwrap_or(());
     }
 }

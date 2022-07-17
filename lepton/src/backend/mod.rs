@@ -1,3 +1,6 @@
+#![allow(clippy::match_single_binding)]
+#![allow(clippy::single_match)]
+
 mod fps_limiter;
 mod receiver;
 mod renderer;
@@ -46,17 +49,17 @@ impl Backend {
         physics.rigid_bodies = lepton.load_rigid_bodies();
         
         // Validate the receivers and senders
-        if let Some(_) = self.graphics_data_sender {
+        if self.graphics_data_sender.is_some() {
             panic!("The physics engine did not pick up the render data sender");
         }
-        if let Some(_) = self.graphics_data_receiver {
+        if self.graphics_data_receiver.is_some() {
             panic!("The graphics engine did not pick up the render data receiver");
         }
         let physics_data_sender = match self.physics_data_sender.take() {
             Some(t) => t,
             None => panic!("Someone picked up the physics data sender"),
         };
-        if let Some(_) = self.physics_data_receiver {
+        if self.physics_data_receiver.is_some() {
             panic!("The physics engine did not pick up the physics data receiver");
         }
 

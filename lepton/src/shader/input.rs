@@ -30,7 +30,7 @@ impl InputType {
         InputType::Custom(id, size_of::<D>(), D::BINDING, D::STAGES)
     }
 
-    pub fn new(&self, graphics: &Graphics) -> Input {
+    pub fn input(&self, graphics: &Graphics) -> Input {
         let input = Input::new(graphics.memory_properties, graphics.swapchain_images.len(), self.get_size() as u64);
         unsafe {
             match self {
@@ -161,7 +161,7 @@ impl Graphics {
     
         for _ in 0..num_images {
             let (uniform_buffer, uniform_buffer_memory) = Graphics::create_buffer(
-                &crate::get_device(),
+                crate::get_device(),
                 buffer_size,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,

@@ -49,7 +49,7 @@ impl<D> UserInterface<D> {
         }
     }
 
-    pub fn add(mut self, element: Element<D>) -> Self {
+    pub fn add_element(mut self, element: Element<D>) -> Self {
         self.elements.push(ElementData::new(element, &mut self.operation_counter));
         self
     }

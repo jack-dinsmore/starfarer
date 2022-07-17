@@ -1,3 +1,5 @@
+#![allow(clippy::unused_io_amount)]
+
 mod tools;
 mod common;
 
@@ -28,7 +30,7 @@ impl Parse for IncludeModel {
         let obj_path = format!("{}/{}.obj", head_name, model_name);
         let mtl_path = format!("{}/{}.mtl", head_name, model_name);
 
-        let output = match load_obj(&Path::new(&obj_path[6..]), &Path::new(&mtl_path[6..])) {
+        let output = match load_obj(Path::new(&obj_path[6..]), Path::new(&mtl_path[6..])) {
             Ok(h) => h,
             Err(_) => panic!("Could not find object {} or {}", obj_path, mtl_path),
         };

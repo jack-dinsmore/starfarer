@@ -24,14 +24,14 @@ impl Common {
     }
 }
 
-pub struct FPS {
+pub struct Fps {
     time: f32,
     short_time: i32,
     frames: u32,
     fps: u32,
 }
 
-impl FPS {
+impl Fps {
     pub fn new(common: &Common) -> UserInterface<Self> {
         UserInterface::new(
             Self {
@@ -40,7 +40,7 @@ impl FPS {
                 frames: 0,
                 fps: 0,
             }
-        ).add(Element::Text{ 
+        ).add_element(Element::Text{ 
             font: common.font.clone(),
             text: "FPS:".to_owned(),
             color: color::WHITE,
@@ -49,7 +49,7 @@ impl FPS {
         })
     }
 
-    pub fn update(&mut self, delta_time: f32, elements: &mut Vec<ElementData<FPS>>) {
+    pub fn update(&mut self, delta_time: f32, elements: &mut [ElementData<Fps>]) {
         self.time += delta_time;
         self.frames += 1;
         if self.time as i32 != self.short_time {
@@ -79,13 +79,13 @@ impl Escape {
                 is_open: false,
                 quit: false,
             }
-        ).add(Element::Background{
+        ).add_element(Element::Background{
             blank: common.blank.clone(),
             x: 0.0,
             y: 0.0,
             width: 0.17,
             height: 0.10
-        }).add(Element::Button{
+        }).add_element(Element::Button{
             blank: common.blank.clone(),
             font: common.font.clone(),
             text: "SETTINGS".to_owned(),

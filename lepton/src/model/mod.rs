@@ -247,7 +247,7 @@ impl Graphics {
             .optimal_tiling_features
             .contains(vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR);
 
-        if is_sample_image_filter_linear_support == false {
+        if !is_sample_image_filter_linear_support {
             panic!("Texture Image format does not support linear blitting!")
         }
     }
@@ -282,12 +282,12 @@ impl Graphics {
             false => 1,
         };
 
-        if image_size <= 0 {
+        if image_size == 0 {
             panic!("Failed to load texture image!")
         }
 
         let (staging_buffer, staging_buffer_memory) = Graphics::create_buffer(
-            &crate::get_device(),
+            crate::get_device(),
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -304,7 +304,7 @@ impl Graphics {
         }
 
         let (texture_image, texture_image_memory) = Graphics::create_image(
-            &crate::get_device(),
+            crate::get_device(),
             image_width,
             image_height,
             mip_levels,
@@ -350,7 +350,7 @@ impl Graphics {
     }
 
     fn create_texture_image_view(&self, texture_image: vk::Image, format: vk::Format, mip_levels: u32) -> vk::ImageView {
-        Self::create_image_view(&crate::get_device(), texture_image, format, vk::ImageAspectFlags::COLOR, mip_levels)
+        Self::create_image_view(crate::get_device(), texture_image, format, vk::ImageAspectFlags::COLOR, mip_levels)
     }
 
     fn create_texture_sampler(&self, _mip_levels: u32) -> vk::Sampler {
@@ -386,7 +386,7 @@ impl Graphics {
         let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
 
         let (staging_buffer, staging_buffer_memory) = Self::create_buffer(
-            &crate::get_device(),
+            crate::get_device(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -403,7 +403,7 @@ impl Graphics {
         }
 
         let (vertex_buffer, vertex_buffer_memory) = Self::create_buffer(
-            &crate::get_device(),
+            crate::get_device(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -423,7 +423,7 @@ impl Graphics {
     fn create_index_buffer(&self, data: &[u32]) -> (vk::Buffer, vk::DeviceMemory) {
         let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
 
-        let (staging_buffer, staging_buffer_memory) = Self::create_buffer(&crate::get_device(), buffer_size, vk::BufferUsageFlags::TRANSFER_SRC,
+        let (staging_buffer, staging_buffer_memory) = Self::create_buffer(crate::get_device(), buffer_size, vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT, self.memory_properties);
             
         unsafe {
@@ -436,7 +436,7 @@ impl Graphics {
         }
         
         let (index_buffer, index_buffer_memory) = Self::create_buffer(
-            &crate::get_device(),
+            crate::get_device(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -667,7 +667,7 @@ impl Graphics {
                     vk::DependencyFlags::empty(),
                     &[],
                     &[],
-                    &[image_barrier.clone()],
+                    &[image_barrier],
                 );
             }
     
@@ -727,7 +727,7 @@ impl Graphics {
                     vk::DependencyFlags::empty(),
                     &[],
                     &[],
-                    &[image_barrier.clone()],
+                    &[image_barrier],
                 );
             }
     
@@ -749,7 +749,7 @@ impl Graphics {
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
-                &[image_barrier.clone()],
+                &[image_barrier],
             );
         }
     

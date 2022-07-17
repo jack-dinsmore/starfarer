@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::unused_io_amount)]
 pub mod shader;
 pub mod model;
 pub mod physics;
@@ -22,7 +25,6 @@ mod constants {
         ClearValue { color: ClearColorValue { float32: [0.0, 0.1, 0.2, 1.0] } },
         ClearValue { depth_stencil: ClearDepthStencilValue { depth: 1.0, stencil: 0, } },
     ];
-    pub(crate) const PI: f64 = 3.141592653589793238462643383;
 }
 
 pub mod prelude {

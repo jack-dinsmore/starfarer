@@ -1,5 +1,6 @@
 use cgmath::{Vector3, InnerSpace};
 use lepton::prelude::*;
+use super::LoadDegree;
 
 const ADJACENCIES: [[u8; 4]; 6] = [
     // Top, right, bottom, left
@@ -19,10 +20,10 @@ pub struct MapID {
 }
 
 impl MapID {
-    pub fn dist(a: MapID, b: MapID, face_subdivision: u8) -> u8 {
+    pub fn dist(a: MapID, b: MapID, face_subdivision: u8) -> i32 {
         if a.face == b.face {
             (a.map_row as i8 - b.map_row as i8).abs().max(
-                (a.map_col as i8 - b.map_col as i8).abs()) as u8
+                (a.map_col as i8 - b.map_col as i8).abs()) as i32
         } else {
             let a_dist = if ADJACENCIES[a.face as usize][0] == b.face {
                 a.edge_dist(0, face_subdivision)
@@ -33,7 +34,7 @@ impl MapID {
             } else if ADJACENCIES[a.face as usize][3] == b.face {
                 a.edge_dist(3, face_subdivision)
             } else {
-                return u8::MAX;
+                return i32::MAX;
             };
             let b_dist = if ADJACENCIES[b.face as usize][0] == a.face {
                 b.edge_dist(0, face_subdivision)
@@ -44,23 +45,23 @@ impl MapID {
             } else if ADJACENCIES[b.face as usize][3] == a.face {
                 b.edge_dist(3, face_subdivision)
             } else {
-                return u8::MAX;
+                return i32::MAX;
             };
             a_dist + b_dist + 1
         }
     }
 
-    fn edge_dist(&self, edge: u8, face_subdivision: u8) -> u8{
+    fn edge_dist(&self, edge: u8, face_subdivision: u8) -> i32 {
         match edge {
-            0 => self.map_col, // Top,
-            1 => face_subdivision - self.map_row - 1, // Right,
-            2 => face_subdivision - self.map_col - 1, // Bottom,
-            3 => self.map_row, // Left,
+            0 => self.map_col as i32, // Top,
+            1 => face_subdivision as i32 - self.map_row as i32 - 1, // Right,
+            2 => face_subdivision as i32 - self.map_col as i32 - 1, // Bottom,
+            3 => self.map_row as i32, // Left,
             _ => unreachable!()
         }
     }
 }
-
+#[derive(Clone, Copy, Debug)]
 pub struct PlanetSettings {
     pub face_subdivision: u32,
     pub map_subdivision: u32,
@@ -69,15 +70,15 @@ pub struct PlanetSettings {
     pub radius: f64,
 }
 
-pub struct Square<'a, F: Fn([f64; 3]) -> f64> {
+pub struct Square<F: Fn([f64; 3]) -> f64> {
     id: MapID,
-    degree: u8,
-    settings: &'a PlanetSettings,
+    degree: LoadDegree,
+    settings: PlanetSettings,
     height_fn: F,
 }
 
-impl<'a, F: Fn([f64; 3]) -> f64> Square<'a, F> {
-    pub fn new(id: MapID, degree: u8, settings: &'a PlanetSettings, height_fn: F) -> Self {
+impl<F: Fn([f64; 3]) -> f64> Square<F> {
+    pub fn new(id: MapID, degree: LoadDegree, settings: PlanetSettings, height_fn: F) -> Self {
         Self {
             id,
             degree,
@@ -86,9 +87,9 @@ impl<'a, F: Fn([f64; 3]) -> f64> Square<'a, F> {
         }
     }
 
-    pub fn load_new(&self) -> VertexType<vertex::VertexLP> {
+    pub fn load_new(&self) -> (Vec<vertex::VertexLP>, Vec<u32>) {
         let mut vertices = Vec::new();
-        let map_subdivision = self.settings.map_subdivision >> self.degree;
+        let map_subdivision = self.settings.map_subdivision >> (self.degree as u8);
         let num_points = (map_subdivision + 1) * (map_subdivision + 1);
         let mut top_points = Vec::with_capacity(num_points as usize);
         let mut bottom_points = Vec::with_capacity(num_points as usize);
@@ -114,14 +115,14 @@ impl<'a, F: Fn([f64; 3]) -> f64> Square<'a, F> {
                         top_radius * poses[((row_index + 1) * (map_subdivision + 1) + col_index) as usize],
                     ];
                     let corner_vals = [
-                        top_points[(row_index * (map_subdivision + 1) + col_index) as usize],
-                        top_points[(row_index * (map_subdivision + 1) + col_index + 1) as usize],
-                        top_points[((row_index + 1) * (map_subdivision + 1) + col_index + 1) as usize],
-                        top_points[((row_index + 1) * (map_subdivision + 1) + col_index) as usize],
                         bottom_points[(row_index * (map_subdivision + 1) + col_index) as usize],
                         bottom_points[(row_index * (map_subdivision + 1) + col_index + 1) as usize],
                         bottom_points[((row_index + 1) * (map_subdivision + 1) + col_index + 1) as usize],
                         bottom_points[((row_index + 1) * (map_subdivision + 1) + col_index) as usize],
+                        top_points[(row_index * (map_subdivision + 1) + col_index) as usize],
+                        top_points[(row_index * (map_subdivision + 1) + col_index + 1) as usize],
+                        top_points[((row_index + 1) * (map_subdivision + 1) + col_index + 1) as usize],
+                        top_points[((row_index + 1) * (map_subdivision + 1) + col_index) as usize],
                     ];
 
                     super::triangulation::assess_cube(corner_poses, corner_vals, &mut vertices);
@@ -131,31 +132,30 @@ impl<'a, F: Fn([f64; 3]) -> f64> Square<'a, F> {
             top_points.clear();
         }
         let indices = (0..vertices.len() as u32).collect::<Vec<_>>();
-        VertexType::Specified(vertices, indices)
+        (vertices, indices)
     }
 
-    pub fn load_from_old(&self, _model: &Model, _old_degree: u8) -> VertexType<vertex::VertexLP>{
+    pub fn load_from_old(&self, _model: &Model, _old_degree: u8) -> (Vec<vertex::VertexLP>, Vec<u32>) {
         self.load_new()
         //// Implement this
     }
 }
 
-impl<'a, F: Fn([f64; 3]) -> f64> Square<'a, F> {
-    fn get_points(&self, height_index: u32, pos_map: &Vec<Vector3<f64>>, target: &mut Vec<f64>) {
-        let map_subdivision = self.settings.map_subdivision >> self.degree;
+impl<F: Fn([f64; 3]) -> f64> Square<F> {
+    fn get_points(&self, height_index: u32, pos_map: &[Vector3<f64>], target: &mut Vec<f64>) {
+        let map_subdivision = self.settings.map_subdivision >> (self.degree as u8);
         let mut vertex = 0;
-        let radius = self.settings.radius * (
-            1.0 - self.settings.height / 2.0 + height_index as f64 * self.settings.height / self.settings.height_subdivision as f64);
+        let radius_frac = 1.0 - self.settings.height / 2.0 + height_index as f64 * self.settings.height / self.settings.height_subdivision as f64;
         for _row_num in 0..(map_subdivision + 1) {
             for _col_num in 0..(map_subdivision + 1) {
-                target.push((self.height_fn)([radius * pos_map[vertex].x, radius * pos_map[vertex].y, radius * pos_map[vertex].z]));
+                target.push((self.height_fn)([radius_frac * pos_map[vertex].x, radius_frac * pos_map[vertex].y, radius_frac * pos_map[vertex].z]));
                 vertex += 1;
             }
         }
     }
 
     fn get_pos_map(&self) -> Vec<Vector3<f64>> {
-        let map_subdivision = self.settings.map_subdivision >> self.degree;
+        let map_subdivision = self.settings.map_subdivision >> (self.degree as u8);
         let mut poses = Vec::with_capacity(((map_subdivision + 1) * (map_subdivision + 1)) as usize);
         let half_length = (self.settings.face_subdivision * map_subdivision) as f64 / 2.0;
         let offset_row = self.id.map_row as f64 * map_subdivision as f64 - half_length;

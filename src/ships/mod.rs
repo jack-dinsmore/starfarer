@@ -170,7 +170,7 @@ impl Ship {
         for attachment in self.attachments.iter_mut() {
             output.push(DrawState::Offset(
                 attachment.model.take().expect("Attachment was double loaded"),
-                attachment.matrix.clone()))
+                attachment.matrix))
         }
         output
     }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::Graphics;
 use crate::model::{Model, DrawState};
@@ -36,10 +36,10 @@ pub trait Renderer: 'static {
 
     /// Load all the models that will be used throughout the game and return them, paired with
     /// their objects.
-    fn load_models(&mut self, graphics: &Graphics) -> HashMap<Object, Vec<DrawState>>;
+    fn load_models(&mut self, graphics: &Graphics) -> FxHashMap<Object, Vec<DrawState>>;
 
     /// Load all the rigid bodies for objects and return them with, paired with their objects.
-    fn load_rigid_bodies(&mut self) -> HashMap<Object, RigidBody>;
+    fn load_rigid_bodies(&mut self) -> FxHashMap<Object, RigidBody>;
 
     /// Do whatever is appropriate to prepare the struct before the render loops start.
     fn prepare(&mut self, _graphics: &Graphics) {}

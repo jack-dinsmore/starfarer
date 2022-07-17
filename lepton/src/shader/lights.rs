@@ -26,7 +26,7 @@ pub struct Lights {
 
 impl Lights {
     pub fn new(graphics: &Graphics) -> Self {
-        let input = InputType::Lights.new(graphics);
+        let input = InputType::Lights.input(graphics);
 
         Self {
             object_indices: [None; builtin::NUM_LIGHTS],
@@ -39,7 +39,7 @@ impl Lights {
     pub fn illuminate(&mut self, object: Object, features: LightFeatures) {
         let mut index = None;
         for (i, val) in self.object_indices.iter().enumerate() {
-            if let None = val {
+            if val.is_none() {
                 self.object_indices[i] = Some(object);
                 index = Some(i);
                 break;

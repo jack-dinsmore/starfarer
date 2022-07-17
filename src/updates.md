@@ -93,7 +93,13 @@ Ship model loaded in and started working on ship backend code.
 
 Accessory loading. Also rehashed ship model loading so that it's done through a loader which can be more easily generalized to mid-game loading and loading of local files. Also redid the ship model and accessories.
 
+# July 17
+
+Terrain generation & used faster hash functions
+
 ## To do:
+- Atmosphere and terrain collision
+- Models can be replaced instead of just destroyed and remade
 - Docking with the other ship
 - Make sure that double-loaded ships share textures
 - Make the number of descriptor sets for models dynamically set (also, should they be allocated per model or per shader?)

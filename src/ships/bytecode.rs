@@ -6,10 +6,6 @@ impl Function {
     }
 
     pub fn execute(&self) {
-        for action in &self.actions {
-            match action {
-                _ => unimplemented!(),
-            }
-        }
+        unimplemented!();
     }
 }

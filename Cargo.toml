@@ -21,6 +21,7 @@ vk-shader-macros = "0.2.8"
 bincode = "1.3.3"
 serde = { version = "1.0.139", features = ["derive"] }
 noise = "0.7.0"
+rustc-hash = "1.1.0"
 
 [build-dependencies]
 bincode = "1.3.3"

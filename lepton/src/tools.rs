@@ -52,7 +52,7 @@ pub fn load_obj(path: &Path) -> Result<(Vec<VertexModel>, Vec<u32>)> {
     for m in models.iter() {
         let mesh = &m.mesh;
 
-        if mesh.texcoords.len() == 0 {
+        if mesh.texcoords.is_empty() {
             bail!("Missing texture coordinates");
         }
 

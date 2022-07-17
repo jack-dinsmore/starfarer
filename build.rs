@@ -4,7 +4,7 @@ use std::fs;
 include!("src/ships/primitives.rs");
 
 fn enterprise() {
-    const ROOT_PATH: &'static str = "assets/enterprise/";
+    const ROOT_PATH: &str = "assets/enterprise/";
     
     fs::write(Path::new(&format!("{}/kestrel/kestrel.dat", ROOT_PATH)), bincode::serialize(&ShipData {
         id: compiled::enterprise::KESTREL,

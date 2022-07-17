@@ -300,17 +300,16 @@ fn interp(low_pos: Vector3<f64>, high_pos: Vector3<f64>, low: f64, high: f64) ->
 }
 
 pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<vertex::VertexLP>) {
-    let mut cube_index = 0usize;
-    if vals[0] < 0.0 { cube_index |= 1; };
-    if vals[1] < 0.0 { cube_index |= 2; };
-    if vals[2] < 0.0 { cube_index |= 4; };
-    if vals[3] < 0.0 { cube_index |= 8; };
-    if vals[4] < 0.0 { cube_index |= 16; };
-    if vals[5] < 0.0 { cube_index |= 32; };
-    if vals[6] < 0.0 { cube_index |= 64; };
-    if vals[7] < 0.0 { cube_index |= 128; };
+    let cube_index = 
+        ((vals[0] < 0.0) as usize) << 0 | 
+        ((vals[1] < 0.0) as usize) << 1 | 
+        ((vals[2] < 0.0) as usize) << 2 | 
+        ((vals[3] < 0.0) as usize) << 3 | 
+        ((vals[4] < 0.0) as usize) << 4 | 
+        ((vals[5] < 0.0) as usize) << 5 | 
+        ((vals[6] < 0.0) as usize) << 6 | 
+        ((vals[7] < 0.0) as usize) << 7;
  
-    /* Cube is entirely in/out of the surface */
     if EDGES[cube_index] == 0 { return; }
 
     let mut cube_verts = [Vector3::zero(); 12];
@@ -356,9 +355,17 @@ pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<
     for index_index in (0..16).step_by(3) {
         if INDICES[cube_index][index_index] == -1 {break;}
         let p0 = cube_verts[INDICES[cube_index][index_index] as usize];
-        let p1 = cube_verts[INDICES[cube_index][index_index + 2] as usize];
-        let p2 = cube_verts[INDICES[cube_index][index_index + 1] as usize];
-        let color = [1.0, 0.8, 0.6, 1.0];
+        let p1 = cube_verts[INDICES[cube_index][index_index + 1] as usize];
+        let p2 = cube_verts[INDICES[cube_index][index_index + 2] as usize];
+        let avg_height = (p0 + p1 + p2).magnitude() / 3.0;
+        let color = if avg_height > 1030.0{
+            [1.0, 0.8, 0.6, 1.0]
+        } else if avg_height > 970.0 {
+            [0.3, 1.0, 0.1, 1.0]
+            
+        } else {
+            [0.0, 0.0, 1.0, 1.0]
+        };
         let info = [1.0, 1.0, 1.0];
         let normal = (p1 - p0).cross(p2 - p0).normalize();
         let normal = [normal.x  as f32, normal.y as f32, normal.z as f32];

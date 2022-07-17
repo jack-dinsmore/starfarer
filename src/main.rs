@@ -1,21 +1,25 @@
+#![allow(clippy::too_many_arguments)]
+
 mod menus;
 mod ships;
 mod skybox;
 mod planet;
+mod threadpool;
 
 use skybox::Skybox;
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Matrix3, Quaternion};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
+use threadpool::ThreadPool;
 
 use ships::{Ship, ShipLoader};
 use planet::Planet;
 
-const WINDOW_TITLE: &'static str = "Starfarer";
+const WINDOW_TITLE: &str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const LOOK_SENSITIVITY: f32 = 0.1;
-const NUM_SHADERS: usize = 50;
+const NUM_SHADERS: usize = 100;
 const MOVE_SENSITIVITY: f32 = 100.0;
 
 struct Starfarer {
@@ -28,6 +32,7 @@ struct Starfarer {
     key_tracker: KeyTracker,
     last_deltas: (f64, f64),
     planet: Planet,
+    threadpool: ThreadPool,
 
     ships: Vec<Ship>,
     sun: Object,
@@ -35,7 +40,7 @@ struct Starfarer {
     player: Object,
     control_ship: Option<usize>,
     
-    fps_menu: UserInterface<menus::FPS>,
+    fps_menu: UserInterface<menus::Fps>,
     escape_menu: UserInterface<menus::Escape>,
     set_cursor_visible: bool,
 }
@@ -47,7 +52,7 @@ impl Starfarer {
         let camera = Camera::new(graphics, Vector3::new(2.0, 0.0, 1.0));
         let lights = Lights::new(graphics);
         let menu_common = menus::Common::new(graphics, &ui_shader);
-        let fps_menu = menus::FPS::new(&menu_common);
+        let fps_menu = menus::Fps::new(&menu_common);
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
         let mut ship_loader = ShipLoader::new();
@@ -62,6 +67,7 @@ impl Starfarer {
         let player = object_manager.get_object();
         let sun = object_manager.get_object();
         let skybox = Skybox::from_temp(graphics);
+        let threadpool = ThreadPool::new(8);
 
         Self {
             low_poly_shader,
@@ -73,6 +79,7 @@ impl Starfarer {
             key_tracker: KeyTracker::new(),
             last_deltas: (0.0, 0.0),
             planet,
+            threadpool,
 
             ships,
             sun,
@@ -141,8 +148,8 @@ impl InputReceiver for Starfarer {
 }
 
 impl Renderer for Starfarer {
-    fn load_models(&mut self, _graphics: &Graphics) -> HashMap<Object, Vec<DrawState>> {
-        let mut map = HashMap::new();
+    fn load_models(&mut self, _graphics: &Graphics) -> FxHashMap<Object, Vec<DrawState>> {
+        let mut map = FxHashMap::default();
         for ship in self.ships.iter_mut() {
             map.insert(ship.object, ship.get_models());
         }
@@ -151,8 +158,8 @@ impl Renderer for Starfarer {
         map
     }
 
-    fn load_rigid_bodies(&mut self) -> HashMap<Object, RigidBody> {
-        let mut map = HashMap::new();
+    fn load_rigid_bodies(&mut self) -> FxHashMap<Object, RigidBody> {
+        let mut map = FxHashMap::default();
         for ship in self.ships.iter_mut() {
             map.insert(ship.object, ship.rigid_body.take().expect("Ship was created incorrectly or double loaded"));
         }
@@ -180,7 +187,7 @@ impl Renderer for Starfarer {
             None => self.control_character(delta_time, &mut tasks),
         };
 
-        self.planet.update(graphics, &self.low_poly_shader, self.camera.get_pos());
+        self.planet.update(graphics, &self.low_poly_shader, &self.threadpool, self.camera.get_pos());
 
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
 
@@ -197,10 +204,8 @@ impl Renderer for Starfarer {
                 self.camera.set_pos(data.0 + data.1 * self.ships[i].seat_pos);
                 self.camera.set_local_rot(data.1);
             }
-        } else {
-            if let Some(p) = graphics.get_pos(&self.player) {
-                self.camera.set_pos(p);
-            }
+        } else if let Some(p) = graphics.get_pos(&self.player) {
+            self.camera.set_pos(p);
         }
         self.camera.update_input(buffer_index);
         self.lights.update_input(graphics, buffer_index);
