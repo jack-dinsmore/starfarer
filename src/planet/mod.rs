@@ -11,13 +11,16 @@ use square::*;
 use super::threadpool::ThreadPool;
 use std::sync::mpsc::Receiver;
 
-const NUM_OCTAVES: u8 = 5;
+const NUM_OCTAVES: u8 = 7;
 const UPDATE_PERIOD: u8 = 8;
+const AMPLITUDE: [f64; NUM_OCTAVES as usize] = [
+    2.0, 1.5/2.0, 1.5/4.0, 1.0/8.0, 1.0/16.0, 1.0/32.0, 1.0/64.0
+];
 
 #[derive(Copy, Clone)]
 pub enum LoadDegree {
     High = 0,
-    Low = 1,
+    Low = 2,
 }
 
 enum LoadState {
@@ -49,7 +52,7 @@ impl Planet {
     pub fn new(seed: u32, radius: f64, object_manager: &mut ObjectManager) -> Self {
         //// Eventually choose these as functions of radius
         let face_subdivision = 4;
-        let map_subdivision = 16;
+        let map_subdivision = 64;
         let request_height = 0.2;
 
         // Calculate height
@@ -73,7 +76,7 @@ impl Planet {
 
         let load_configs = vec![// Sorted from high to low
             (1.4, LoadConfig { low_dist: (face_subdivision as f64 * 1.5) as i32, high_dist: -1 } ),
-            (1.0, LoadConfig { low_dist: 2, high_dist: 0 } ),
+            (1.0, LoadConfig { low_dist: 2, high_dist: 1 } ),
         ];
 
         Self {
@@ -190,8 +193,8 @@ impl Planet {
 
     pub fn init_rigid_body(&self, map: &mut FxHashMap<Object, RigidBody>) {
         map.insert(self.object, RigidBody::new(
-            Vector3::new(2000.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
-            Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.5)
+            Vector3::new(1100.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
+            Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
         ).motivate(1.0, Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)));
     }
 }
@@ -201,11 +204,12 @@ impl Planet {
         const TERRACES: f64 = 8.0;
         let mut val = 0.0;
         for oct in 0..NUM_OCTAVES {
-            let freq = 1 << oct;
-            val += (0.5 + 5.0 * noise_map.get([pos[0] * freq as f64, pos[1] * freq as f64, pos[2] * freq as f64]) / (freq as f64)).clamp(0.0, 1.0);
+            let freq = (1 << oct) as f64;
+            val += (0.5 + 5.0 * noise_map.get([pos[0] * freq, pos[1] * freq, pos[2] * freq]) * AMPLITUDE[oct as usize]).clamp(0.0, 1.0);
         }
         val /= NUM_OCTAVES as f64;
-        0.5 * (((val.powi(3)-0.15) * TERRACES).round() / TERRACES) + pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2] - 1.0
+        //0.5 * (((val.powi(3)-0.15) * TERRACES).round() / TERRACES) + pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2] - 1.0
+        0.6 * (val.powi(3)-0.15) + pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2] - 1.0
     }
 }
 

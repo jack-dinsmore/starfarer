@@ -1,4 +1,4 @@
-use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Zero, InnerSpace, SquareMatrix};
+use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Zero, InnerSpace, SquareMatrix, Rotation};
 
 use crate::shader::builtin;
 use super::{Updater, Collider};
@@ -13,13 +13,13 @@ pub struct RigidBody {
     pub(super) orientation: Quaternion<f64>,
     pub(super) ang_vel: Vector3<f64>, // Local frame
     pub(super) moi: Matrix3<f64>,
-    moi_inv: Matrix3<f64>,
+    pub(super) moi_inv: Matrix3<f64>,
     
-    updater: Updater,
+    pub(super) updater: Updater,
     
-    radius: f64,
-    collider: Collider,
-    model_offset: Vector3<f32>,
+    pub(super) collider: Collider,
+    pub(super) collider_offset: Vector3<f64>,
+    pub(super) model_offset: Vector3<f32>,
 }
 
 impl RigidBody {
@@ -35,8 +35,8 @@ impl RigidBody {
             moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             moi_inv: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
-            radius: 0.0,
             collider: Collider::None,
+            collider_offset: Vector3::zero(),
             model_offset: Vector3::new(0.0, 0.0, 0.0)
         }
     }
@@ -53,8 +53,8 @@ impl RigidBody {
             moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             moi_inv: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
-            radius: 0.0,
             collider: Collider::None,
+            collider_offset: Vector3::zero(),
             model_offset: Vector3::new(0.0, 0.0, 0.0)
         }
     }
@@ -69,6 +69,12 @@ impl RigidBody {
         self.moi_inv = self.moi.invert().unwrap();
         self.mass = mass;
         self.updater = Updater::Free;
+        self
+    }
+    
+    pub fn collide(mut self, collider: Collider, collider_offset: Vector3<f64>) -> Self {
+        self.collider = collider;
+        self.collider_offset = collider_offset;
         self
     }
 
@@ -102,5 +108,44 @@ impl RigidBody {
             _ => unimplemented!()
         }
         
+    }
+
+    pub(crate) fn detect_collision_bool(&self, o: &RigidBody) -> bool {
+        // Work in axis-aligned frame
+        if let Collider::None = self.collider {
+            return false;
+        }
+        if let Collider::None = o.collider {
+            return false;
+        }
+
+        let displacement = o.pos - self.pos - self.collider_offset + o.collider_offset;
+        if displacement.magnitude() > self.collider.radius() + o.collider.radius() {
+            return false;
+        }
+        let my_inv_orientation = self.orientation.invert();
+        let o_inv_orientation = o.orientation.invert();
+
+        let initial_axis = Vector3::new(1.0, 0.1, 0.06).normalize();
+        let mut simplex = Vec::with_capacity(4);
+
+        let mut dir = -(my_inv_orientation * self.collider.support(self.orientation * initial_axis)
+            - (o_inv_orientation * o.collider.support(o.orientation * -initial_axis)) - displacement);
+        simplex.push(-dir);
+        let mut quit = false;
+        while !quit {
+            dir = dir.normalize();
+            let new_vec = my_inv_orientation * self.collider.support(self.orientation * dir)
+                - (o_inv_orientation * o.collider.support(o.orientation * -dir)) - displacement;
+            let d = new_vec.dot(dir);
+            if new_vec.dot(dir) < 0.0 {
+                return false;
+            }
+            simplex.push(new_vec);
+            if Collider::next_simplex(&mut simplex, &mut dir, &mut quit) {
+                return true;
+            }
+        }
+        false
     }
 }

@@ -1,10 +1,12 @@
 mod rigid_body;
+mod collisions;
 
 use std::sync::mpsc::{Receiver, Sender};
 use rustc_hash::FxHashMap;
 use cgmath::{Vector3};
 
 pub use rigid_body::*;
+pub use collisions::*;
 use crate::backend::{Backend};
 use crate::graphics::{GraphicsData, GraphicsInnerData};
 
@@ -37,14 +39,6 @@ pub enum Updater {
     Line,
     Circle,
     Orbit,
-}
-
-pub enum Collider {
-    None,
-    Box,
-    Sphere,
-    Plane,
-    BoundedPlane,
 }
 
 pub enum PhysicsTask {
@@ -119,6 +113,14 @@ impl Physics {
         }
 
         // Detect collisions
+        for (i, (_, rb_i)) in self.rigid_bodies.iter().enumerate() {
+            for (j, (_, rb_j)) in self.rigid_bodies.iter().enumerate() {
+                if j <= i { continue; }
+                if rb_i.detect_collision_bool(&rb_j) {
+                    println!("Collision!");
+                }
+            }
+        }
 
         // Resolve collisions
 

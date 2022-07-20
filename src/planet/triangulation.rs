@@ -354,16 +354,25 @@ pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<
  
     for index_index in (0..16).step_by(3) {
         if INDICES[cube_index][index_index] == -1 {break;}
-        let p0 = cube_verts[INDICES[cube_index][index_index] as usize];
-        let p1 = cube_verts[INDICES[cube_index][index_index + 1] as usize];
-        let p2 = cube_verts[INDICES[cube_index][index_index + 2] as usize];
+        let mut p0 = cube_verts[INDICES[cube_index][index_index] as usize];
+        let mut p1 = cube_verts[INDICES[cube_index][index_index + 1] as usize];
+        let mut p2 = cube_verts[INDICES[cube_index][index_index + 2] as usize];
         let avg_height = (p0 + p1 + p2).magnitude() / 3.0;
-        let color = if avg_height > 1030.0{
+        let color = if avg_height > 1020.0 {
             [1.0, 0.8, 0.6, 1.0]
-        } else if avg_height > 970.0 {
+        } else if avg_height > 980.0 {
             [0.3, 1.0, 0.1, 1.0]
             
         } else {
+            if p0.magnitude2() < 980.0 * 980.0 {
+                p0 = p0.normalize() * 980.0
+            }
+            if p1.magnitude2() < 980.0 * 980.0 {
+                p1 = p1.normalize() * 980.0
+            }
+            if p2.magnitude2() < 980.0 * 980.0 {
+                p2 = p2.normalize() * 980.0
+            }
             [0.0, 0.0, 1.0, 1.0]
         };
         let info = [1.0, 1.0, 1.0];
