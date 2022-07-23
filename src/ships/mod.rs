@@ -58,6 +58,7 @@ impl ShipLoader {
             Some(_) => unimplemented!("Loading models from a file is not implemented"),
             None => match part_id { // Assume the data was compiled
                 compiled::enterprise::KESTREL => bincode::deserialize(include_model!("../../assets/enterprise/kestrel")).unwrap(),
+                compiled::test::CUBE => bincode::deserialize(include_model!("../../assets/test/cube")).unwrap(),
                 _ => match MakeID::from(part_id) {
                     compiled::enterprise::MAKE => bincode::deserialize(include_model!("../../assets/enterprise/accessories")).unwrap(),
                     _ => panic!("Models of {:?} were not compiled", part_id)
@@ -72,6 +73,7 @@ impl ShipLoader {
             Some(_) => unimplemented!("Loading ship data from a file is not implemented"),
             None => match id { // Assume the data was compiled
                 compiled::enterprise::KESTREL => bincode::deserialize(include_bytes!("../../assets/enterprise/kestrel/kestrel.dat")).unwrap(),
+                compiled::test::CUBE => bincode::deserialize(include_bytes!("../../assets/test/cube/cube.dat")).unwrap(),
                 _ => panic!("Ship {:?} was not compiled.", id)
             }
         }
@@ -129,7 +131,7 @@ impl Ship {
         let rigid_body = Some(RigidBody::new(pos, vel, orientation, ang_vel)
             .motivate(data.mass, data.moment_of_inertia)
             .offset(data.center_of_mass)
-            .collide(Collider::cube(5.0), Vector3::zero())
+            .collide(Collider::cube(1.0), 1.0, Vector3::zero())
         );
         let mut attachments = Vec::with_capacity(data.attachments.len());
         for attachment in data.attachments.into_iter() {

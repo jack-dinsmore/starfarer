@@ -20,9 +20,9 @@ use crate::physics::{Physics, PhysicsData};
 
 pub struct Backend {
     pub(crate) event_loop: EventLoop<()>,
-    pub(crate) graphics_data_sender: Option<Sender<GraphicsData>>,
+    pub(crate) graphics_data_sender: Sender<GraphicsData>,
     pub(crate) graphics_data_receiver: Option<Receiver<GraphicsData>>,
-    pub(crate) physics_data_sender: Option<Sender<PhysicsData>>,
+    pub(crate) physics_data_sender: Sender<PhysicsData>,
     pub(crate) physics_data_receiver: Option<Receiver<PhysicsData>>,
 }
 
@@ -33,9 +33,9 @@ impl Backend {
         let physics_data = mpsc::channel();
         Backend {
             event_loop,
-            graphics_data_sender: Some(graphics_data.0),
+            graphics_data_sender: graphics_data.0,
             graphics_data_receiver: Some(graphics_data.1),
-            physics_data_sender: Some(physics_data.0),
+            physics_data_sender: physics_data.0,
             physics_data_receiver: Some(physics_data.1),
         }
     }
@@ -49,16 +49,9 @@ impl Backend {
         physics.rigid_bodies = lepton.load_rigid_bodies();
         
         // Validate the receivers and senders
-        if self.graphics_data_sender.is_some() {
-            panic!("The physics engine did not pick up the render data sender");
-        }
         if self.graphics_data_receiver.is_some() {
             panic!("The graphics engine did not pick up the render data receiver");
         }
-        let physics_data_sender = match self.physics_data_sender.take() {
-            Some(t) => t,
-            None => panic!("Someone picked up the physics data sender"),
-        };
         if self.physics_data_receiver.is_some() {
             panic!("The physics engine did not pick up the physics data receiver");
         }
@@ -150,7 +143,7 @@ impl Backend {
                 | Event::RedrawRequested(_window_id) => {
                     let delta_time = graphics_limiter.tick_frame();
                     graphics.receive();
-                    physics_data_sender.send(lepton.update(&graphics, delta_time)).unwrap();
+                    self.physics_data_sender.send(lepton.update(&graphics, delta_time)).unwrap();
                     match graphics.begin_frame() {
                         Some(data) => {
                             let tasks = lepton.render(&graphics, data.buffer_index);

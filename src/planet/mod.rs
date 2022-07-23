@@ -61,8 +61,6 @@ impl Planet {
         let height_subdivision = closest_multiple_of(1 << (LoadDegree::Low as u8), request_divisions);
         let height = triangle_length * height_subdivision as f64;
 
-        println!("Planet height: {} with division {}", height, height_subdivision);
-
         let power = 0.8;
         let mut models = Vec::with_capacity((face_subdivision * face_subdivision) as usize * 6);
         for face in 0..6 {

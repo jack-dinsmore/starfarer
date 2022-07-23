@@ -28,7 +28,7 @@ impl Camera {
             pos,
             local_rot: None,
             theta: std::f32::consts::PI / 2.0,
-            phi: 0.0,
+            phi: std::f32::consts::PI,
             input,
         }
     }

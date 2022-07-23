@@ -1,7 +1,7 @@
 use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Zero, InnerSpace, SquareMatrix, Rotation};
 
 use crate::shader::builtin;
-use super::{Updater, Collider};
+use super::{Updater, Collider, collisions::{GJKState, CollisionType}};
 
 pub struct RigidBody {
     pub(super) pos: Vector3<f64>,
@@ -18,6 +18,7 @@ pub struct RigidBody {
     pub(super) updater: Updater,
     
     pub(super) collider: Collider,
+    pub(super) elasticity: f64,
     pub(super) collider_offset: Vector3<f64>,
     pub(super) model_offset: Vector3<f32>,
 }
@@ -36,6 +37,7 @@ impl RigidBody {
             moi_inv: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
             collider: Collider::None,
+            elasticity: 1.0,
             collider_offset: Vector3::zero(),
             model_offset: Vector3::new(0.0, 0.0, 0.0)
         }
@@ -54,6 +56,7 @@ impl RigidBody {
             moi_inv: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
             collider: Collider::None,
+            elasticity: 1.0,
             collider_offset: Vector3::zero(),
             model_offset: Vector3::new(0.0, 0.0, 0.0)
         }
@@ -72,8 +75,9 @@ impl RigidBody {
         self
     }
     
-    pub fn collide(mut self, collider: Collider, collider_offset: Vector3<f64>) -> Self {
+    pub fn collide(mut self, collider: Collider, elasticity: f64, collider_offset: Vector3<f64>) -> Self {
         self.collider = collider;
+        self.elasticity = elasticity;
         self.collider_offset = collider_offset;
         self
     }
@@ -110,42 +114,80 @@ impl RigidBody {
         
     }
 
-    pub(crate) fn detect_collision_bool(&self, o: &RigidBody) -> bool {
-        // Work in axis-aligned frame
+    pub(crate) fn detect_collision_dist(&self, o: &RigidBody) -> Option<(Vector3<f64>, Vector3<f64>)> {
+        // Work in axis-aligned frame, self-centric.
+
+        // Confirm both colliders are active
         if let Collider::None = self.collider {
-            return false;
+            return None;
         }
         if let Collider::None = o.collider {
-            return false;
+            return None;
         }
 
+        // Confirm the objects are within collision distance
         let displacement = o.pos - self.pos - self.collider_offset + o.collider_offset;
         if displacement.magnitude() > self.collider.radius() + o.collider.radius() {
-            return false;
+            return None;
         }
+        
+        // Initialization
         let my_inv_orientation = self.orientation.invert();
         let o_inv_orientation = o.orientation.invert();
-
         let initial_axis = Vector3::new(1.0, 0.1, 0.06).normalize();
-        let mut simplex = Vec::with_capacity(4);
 
-        let mut dir = -(my_inv_orientation * self.collider.support(self.orientation * initial_axis)
-            - (o_inv_orientation * o.collider.support(o.orientation * -initial_axis)) - displacement);
-        simplex.push(-dir);
-        let mut quit = false;
-        while !quit {
+        let (my_id, my_pos) = self.collider.support(my_inv_orientation * initial_axis);
+        let (o_id, o_pos) = o.collider.support(o_inv_orientation * -initial_axis);
+        let mut dir = -(self.orientation * my_pos - (o.orientation * o_pos + displacement));
+        let mut state = GJKState::new((-dir, my_id, o_id));
+        loop {
             dir = dir.normalize();
-            let new_vec = my_inv_orientation * self.collider.support(self.orientation * dir)
-                - (o_inv_orientation * o.collider.support(o.orientation * -dir)) - displacement;
-            let d = new_vec.dot(dir);
+            let (my_id, my_pos) = self.collider.support(my_inv_orientation * dir);
+            let (o_id, o_pos) = o.collider.support(o_inv_orientation * -dir);
+            let new_vec = self.orientation * my_pos - (o.orientation * o_pos + displacement);
+
             if new_vec.dot(dir) < 0.0 {
-                return false;
+                return None;
             }
-            simplex.push(new_vec);
-            if Collider::next_simplex(&mut simplex, &mut dir, &mut quit) {
-                return true;
+            state.push((new_vec, my_id, o_id));
+            if match state.contains_origin(&mut dir) {
+                Err(_) => return None,
+                Ok(b) => b
+            } {
+                // Process collision
+                let (p1, p2, center, mut normal) = match state.get_collision_type() {
+                    Ok(t) => match t{
+                        CollisionType::Face0((v0, v1, v2), (o0,)) => {
+                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
+                            let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
+                            let v2 = self.orientation * self.collider.id_to_vertex(v2) + self.collider_offset;
+                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            (v0, o0, o0, (v1 - v0).cross(v2 - v0))
+                        },
+                        CollisionType::Face1((v0,), (o0, o1, o2)) => {
+                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
+                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            let o2 = o.orientation * o.collider.id_to_vertex(o2) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            (v0, o0, v0, (o1 - o0).cross(o2 - o0))
+                        },
+                        CollisionType::Edge((v0, v1), (o0, o1)) => {
+                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
+                            let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
+                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            (v0, o0, (v0 + o0 + v1 + o1) / 4.0, (v1 - v0).cross(o1 - o0))
+                        },
+                    },
+                    Err(e) => {
+                        println!("Could not resolve collison because {:?}", e);
+                        return None;
+                    }
+                };
+
+                normal *= normal.dot(p2 - p1) / normal.magnitude2();
+                return Some((normal, center));
             }
         }
-        false
     }
 }

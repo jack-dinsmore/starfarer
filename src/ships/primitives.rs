@@ -47,6 +47,12 @@ pub mod compiled {
         pub const RCS: PartID = MAKE.part(5);
         pub const SOLAR: PartID = MAKE.part(6);
     }
+    pub mod test {
+        use super::super::{MakeID, PartID};
+        pub const MAKE: MakeID = MakeID{ make: 1 };
+
+        pub const CUBE: PartID = MAKE.part(0);
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]

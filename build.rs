@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::fs;
+use cgmath::Zero;
 
 include!("src/ships/primitives.rs");
 
@@ -56,6 +57,24 @@ fn enterprise() {
     }).unwrap()).unwrap();
 }
 
+fn test() {
+    const ROOT_PATH: &str = "assets/test/";
+    
+    fs::write(Path::new(&format!("{}/cube/cube.dat", ROOT_PATH)), bincode::serialize(&ShipData {
+        id: compiled::test::CUBE,
+        center_of_mass: Vector3::new(0.0, 0.0, 0.0),
+        mass: 1.0,
+        moment_of_inertia: Matrix3::new(
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0,
+        ),
+        attachments: Vec::new(),
+        seat_pos: Vector3::zero(),
+    }).unwrap()).unwrap();
+}
+
 fn main() {
     enterprise();
+    test();
 }
