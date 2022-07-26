@@ -81,45 +81,47 @@ impl Physics {
     }
 
     pub(crate) fn update(&mut self, delta_time: f32) {
-        // Detect collisions
-        let mut collision_results = Vec::new();
-        for (i, (o_i, rb_i)) in self.rigid_bodies.iter().enumerate() {
-            for (j, (o_j, rb_j)) in self.rigid_bodies.iter().enumerate() {
-                if j <= i {
+        // Detect and act on collisions
+        for (o_i, rb_i) in self.rigid_bodies.iter() {
+            for (o_j, rb_j) in self.rigid_bodies.iter() {
+                if o_j <= o_i {
                     continue;
                 }
+
                 if let Some((n, r)) = rb_i.detect_collision_dist(&rb_j) {
-                    // Fix position
-                    let frac = match rb_i.updater {
-                        Updater::Fixed => 0.0,
-                        _ => match rb_j.updater {
-                            Updater::Fixed => 1.0,
-                            _ => rb_i.mass / (rb_i.mass + rb_j.mass),
-                        },
-                    };
-                    
-                    // Impulse
                     let r1 = r;
                     let r2 = r - (rb_j.pos - rb_i.pos);
-                    let rel_vel = rb_j.vel - rb_i.vel;
+                    let rel_vel = rb_j.vel + rb_j.ang_vel.cross(r1) - rb_i.vel - rb_i.ang_vel.cross(r2);
                     let elasticity = (rb_i.elasticity * rb_j.elasticity).sqrt();
                     let normal = n.normalize();
-                    let impulse = -(1.0 + elasticity) * normal.dot(rel_vel) * normal / (
-                        1.0 / rb_i.mass + 1.0 / rb_j.mass + normal.dot(
-                            rb_i.moi_inv * (r1.cross(normal).cross(r1))
-                            + rb_j.moi_inv * (r2.cross(normal).cross(r2))
-                        )
-                    );
-                    collision_results.push(PhysicsTask::AddGlobalImpulse(*o_i, -impulse));
-                    collision_results.push(PhysicsTask::AddGlobalImpulse(*o_j, impulse));
-                    collision_results.push(PhysicsTask::AddGlobalImpulseTorque(*o_i, -r1.cross(impulse)));
-                    collision_results.push(PhysicsTask::AddGlobalImpulseTorque(*o_j, r2.cross(impulse)));
-                    collision_results.push(PhysicsTask::ShiftPos(*o_i, -n * frac));
-                    collision_results.push(PhysicsTask::ShiftPos(*o_j, n * (1.0 - frac)));
+                    let i_denom = match rb_i.updater {
+                        Updater::Fixed => 0.0,
+                        _ => 1.0 / rb_i.mass + normal.dot(rb_i.moi_inv * (r1.cross(normal).cross(r1)))
+                    };
+                    let j_denom = match rb_j.updater {
+                        Updater::Fixed => 0.0,
+                        _ => 1.0 / rb_j.mass + normal.dot(rb_j.moi_inv * (r2.cross(normal).cross(r2)))
+                    };
+                    let impulse = -(1.0 + elasticity) * normal.dot(rel_vel) * normal / (i_denom + j_denom);
+
+                    let (rb_i, rb_j): (&mut RigidBody, &mut RigidBody) = unsafe {
+                        // Convert to mutable references. This is safe because they are non-identical and I'm not editing the hash.
+                        let i_ptr = rb_i as *const _ as *mut _;
+                        let j_ptr = rb_j as *const _ as *mut _;
+                        (&mut *i_ptr, &mut *j_ptr)
+                    };
+
+                    
+                    rb_i.force -= impulse / delta_time as f64;
+                    rb_i.torque -= r1.cross(impulse) / delta_time as f64;
+                    rb_i.collide_normal = Some(normal);
+
+                    rb_j.force += impulse / delta_time as f64;
+                    rb_j.torque += r2.cross(impulse) / delta_time as f64;
+                    rb_j.collide_normal = Some(-normal);
                 }
             }
         }
-        self.physics_data_sender.send(collision_results).unwrap();
 
         // Add forces
         for task_vec in self.physics_data_receiver.try_iter() {
@@ -127,22 +129,44 @@ impl Physics {
                 match task {
                     PhysicsTask::AddGlobalForce(object, force) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            if let Some(n) = rb.collide_normal {
+                                if force.dot(n) > 0.0 {
+                                    continue;
+                                }
+                            }
                             rb.force += force;
                         }
                     },
                     PhysicsTask::AddGlobalImpulse(object, impulse) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
+                            if let Some(n) = rb.collide_normal {
+                                if impulse.dot(n) > 0.0 {
+                                    continue;
+                                }
+                            }
                             rb.force += impulse / delta_time as f64;
                         }
                     },
                     PhysicsTask::AddLocalForce(object, force) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
-                            rb.force += rb.orientation * force;
+                            let force = rb.orientation * force;
+                            if let Some(n) = rb.collide_normal {
+                                if force.dot(n) > 0.0 {
+                                    continue;
+                                }
+                            }
+                            rb.force += force;
                         }
                     },
                     PhysicsTask::AddLocalImpulse(object, impulse) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
-                            rb.force += rb.orientation * impulse / delta_time as f64;
+                            let force = rb.orientation * impulse / delta_time as f64;
+                            if let Some(n) = rb.collide_normal {
+                                if force.dot(n) > 0.0 {
+                                    continue;
+                                }
+                            }
+                            rb.force += force;
                         }
                     },
                     PhysicsTask::AddLocalImpulseTorque(object, impulse) => {
@@ -163,8 +187,6 @@ impl Physics {
                 }
             }
         }
-
-        // Resolve collisions
 
         // Update body position
         for body in self.rigid_bodies.values_mut() {

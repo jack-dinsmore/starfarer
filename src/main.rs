@@ -1,5 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
+#[cfg(test)]
+mod test;
+
 mod menus;
 mod ships;
 mod skybox;
@@ -60,13 +63,13 @@ impl Starfarer {
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(-10.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.00), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+                Vector3::new(-10.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(10.0, 0.0, 0.0), Vector3::zero(), Quaternion::new(0.0, 0.0, 0.0, 1.0), Vector3::zero()),
+                Vector3::new(10.0, 0.0, 0.0), Vector3::new(20.0, 0.0, 0.0), Quaternion::new(0.01, -0.01, 0.02, 1.0), Vector3::zero()),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(0.0, -5.0, 0.001), Vector3::new(0.0, 2.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::zero()),
+                Vector3::new(0.0, -1.2, 0.001), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(0.002, 5.0, 0.0), Vector3::new(0.0, -2.0, 0.0), Quaternion::new(0.0, 0.5, 0.25, -0.25), Vector3::zero()),
+                Vector3::new(0.002, 1.2, 0.0), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(0.5, 0.2, 0.3, 0.3), Vector3::new(0.0, 0.0, 0.2)),
         ];
         let player = object_manager.get_object();
         let sun = object_manager.get_object();

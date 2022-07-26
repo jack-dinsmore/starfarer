@@ -21,6 +21,7 @@ pub struct RigidBody {
     pub(super) elasticity: f64,
     pub(super) collider_offset: Vector3<f64>,
     pub(super) model_offset: Vector3<f32>,
+    pub(super) collide_normal: Option<Vector3<f64>>,
 }
 
 impl RigidBody {
@@ -39,7 +40,8 @@ impl RigidBody {
             collider: Collider::None,
             elasticity: 1.0,
             collider_offset: Vector3::zero(),
-            model_offset: Vector3::new(0.0, 0.0, 0.0)
+            model_offset: Vector3::new(0.0, 0.0, 0.0),
+            collide_normal: None,
         }
     }
 
@@ -58,7 +60,8 @@ impl RigidBody {
             collider: Collider::None,
             elasticity: 1.0,
             collider_offset: Vector3::zero(),
-            model_offset: Vector3::new(0.0, 0.0, 0.0)
+            model_offset: Vector3::new(0.0, 0.0, 0.0),
+            collide_normal: None,
         }
     }
 
@@ -108,6 +111,7 @@ impl RigidBody {
                 self.orientation = self.orientation.normalize();
                 self.force = Vector3::zero();
                 self.torque = Vector3::zero();
+                self.collide_normal = None;
             },
             _ => unimplemented!()
         }
@@ -157,26 +161,35 @@ impl RigidBody {
                 // Process collision
                 let (p1, p2, center, mut normal) = match state.get_collision_type() {
                     Ok(t) => match t{
-                        CollisionType::Face0((v0, v1, v2), (o0,)) => {
+                        CollisionType::FaceVertex((v0, v1, v2), (o0,)) => {
                             let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
                             let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
                             let v2 = self.orientation * self.collider.id_to_vertex(v2) + self.collider_offset;
                             let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
                             (v0, o0, o0, (v1 - v0).cross(v2 - v0))
                         },
-                        CollisionType::Face1((v0,), (o0, o1, o2)) => {
+                        CollisionType::VertexFace((v0,), (o0, o1, o2)) => {
                             let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
                             let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
                             let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
                             let o2 = o.orientation * o.collider.id_to_vertex(o2) + self.collider_offset - o.collider_offset + o.pos - self.pos;
                             (v0, o0, v0, (o1 - o0).cross(o2 - o0))
                         },
-                        CollisionType::Edge((v0, v1), (o0, o1)) => {
+                        CollisionType::EdgeEdge((v0, v1), (o0, o1)) => {
                             let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
                             let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
                             let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
                             let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
                             (v0, o0, (v0 + o0 + v1 + o1) / 4.0, (v1 - v0).cross(o1 - o0))
+                        },
+                        CollisionType::FaceFace((v0, v1, v2), (o0, o1, o2)) => {
+                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
+                            let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
+                            let v2 = self.orientation * self.collider.id_to_vertex(v2) + self.collider_offset;
+                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            let o2 = o.orientation * o.collider.id_to_vertex(o2) + self.collider_offset - o.collider_offset + o.pos - self.pos;
+                            (v0, o0, (v0 + v1 + v2 + o0 + o1 + o2) / 6.0, (o1 - o0).cross(o2 - o0) + (v1 - v0).cross(v2 - v0))
                         },
                     },
                     Err(e) => {

@@ -193,7 +193,8 @@ impl Planet {
         map.insert(self.object, RigidBody::new(
             Vector3::new(1100.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
             Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
-        ).motivate(1.0, Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)));
+        )
+        .collide(Collider::Cube{length: 1020.0}, 1.0, Vector3::zero()));
     }
 }
 

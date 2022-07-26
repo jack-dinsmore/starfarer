@@ -86,9 +86,10 @@ impl Collider {
 }
 
 pub(super) enum CollisionType {
-    Edge((usize, usize), (usize, usize)),
-    Face0((usize, usize, usize), (usize,)),
-    Face1((usize,), (usize, usize, usize)),
+    EdgeEdge((usize, usize), (usize, usize)),
+    FaceVertex((usize, usize, usize), (usize,)),
+    VertexFace((usize,), (usize, usize, usize)),
+    FaceFace((usize, usize, usize), (usize, usize, usize)),
 }
 
 pub(super) struct GJKState {
@@ -164,43 +165,85 @@ impl GJKState {
                 }
             }
 
-            if let Some(v) = my_three {
-                CollisionType::Face1(
+            if let Some(v) = my_three { // My vertex
+                CollisionType::VertexFace(
                     (*v,), 
                     (*o_vertices.keys().nth(0).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
                     *o_vertices.keys().nth(1).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
                     *o_vertices.keys().nth(2).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?))
 
-            } else if let Some(v) = o_three {
-                CollisionType::Face0(
+            } else if let Some(v) = o_three { // Other vertex
+                CollisionType::FaceVertex(
                     (*my_vertices.keys().nth(0).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
                     *my_vertices.keys().nth(1).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
                     *my_vertices.keys().nth(2).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?),
                     (*v,))
-            } else {
-                let mut my_verts = (None, None);
-                let mut o_verts = (None, None);
-                for v in &vertex_array {
-                    if v.1 == *my_two.ok_or(anyhow!("No cases met; {:?}, {:?}", my_vertices, o_vertices))? {
-                        if o_verts.0.is_some() {
-                            o_verts.1 = Some(v.2)
-                        } else {
-                            o_verts.0 = Some(v.2)
+            } else if let Some(my) = my_two { // My edge
+                match o_two {
+                    Some(o) => {
+                        let mut my_verts = (None, None);
+                        let mut o_verts = (None, None);
+                        for v in &vertex_array {
+                            if v.1 == *my {
+                                if o_verts.0.is_some() {
+                                    o_verts.1 = Some(v.2)
+                                } else {
+                                    o_verts.0 = Some(v.2)
+                                }
+                            }
+                            if v.2 == *o {
+                                if my_verts.0.is_some() {
+                                    my_verts.1 = Some(v.1)
+                                } else {
+                                    my_verts.0 = Some(v.1)
+                                }
+                            }
                         }
-                    }
-                    if v.2 == *o_two.ok_or(anyhow!("No cases met; {:?}, {:?}", my_vertices, o_vertices))? {
-                        if my_verts.0.is_some() {
-                            my_verts.1 = Some(v.1)
+                        CollisionType::EdgeEdge(
+                            (my_verts.0.unwrap(), 
+                            my_verts.1.unwrap()), 
+                            (o_verts.0.unwrap(), 
+                            o_verts.1.unwrap())
+                        )
+                    },
+                    None => {
+                        let mut my_others = (None, None);
+                        for v in &vertex_array {
+                            if v.1 != *my {
+                                if my_others.0.is_some() {
+                                    my_others.1 = Some(v.1);
+                                } else {
+                                    my_others.0 = Some(v.1);
+                                }
+                            }
+                        }
+                        CollisionType::FaceFace(
+                            (*my, my_others.0.unwrap(), my_others.1.unwrap()),
+                            (vertex_array[0].2, vertex_array[1].2, vertex_array[2].2)
+                        )
+                    },
+                }
+            } else if let Some(o) = o_two { // O edge
+                // both edges covered
+                let mut o_others = (None, None);
+                for v in &vertex_array {
+                    if v.2 != *o {
+                        if o_others.0.is_some() {
+                            o_others.1 = Some(v.2);
                         } else {
-                            my_verts.0 = Some(v.1)
+                            o_others.0 = Some(v.2);
                         }
                     }
                 }
-                CollisionType::Edge(
-                    (my_verts.0.unwrap(), 
-                    my_verts.1.unwrap()), 
-                    (o_verts.0.unwrap(), 
-                    o_verts.1.unwrap()))
+                CollisionType::FaceFace(
+                    (vertex_array[0].1, vertex_array[1].1, vertex_array[2].1),
+                    (*o, o_others.0.unwrap(), o_others.1.unwrap()),
+                )
+            } else {
+                CollisionType::FaceFace(
+                    (vertex_array[0].1, vertex_array[1].1, vertex_array[2].1),
+                    (vertex_array[0].2, vertex_array[1].2, vertex_array[2].2)
+                )
             }
         } else {
             unreachable!();
