@@ -28,6 +28,8 @@ pub trait Renderer: 'static {
     /// time.
     fn update(&mut self, _graphics: &Graphics, _delta_time: f32) -> Vec<PhysicsTask>;
 
+    fn interaction(_tasks: &mut Vec<PhysicsTask>, _rb_i: (&Object, &RigidBody), _rb_j: (&Object, &RigidBody)) {}
+
     /// Called only on window resize.
     fn resize(&mut self, _graphics: &Graphics) {}
 

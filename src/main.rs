@@ -24,6 +24,7 @@ const WINDOW_HEIGHT: u32 = 1080;
 const LOOK_SENSITIVITY: f32 = 0.1;
 const NUM_SHADERS: usize = 100;
 const MOVE_SENSITIVITY: f32 = 100.0;
+const G: f64 = 1.5e0;
 
 struct Starfarer {
     low_poly_shader: Shader<builtin::LPSignature>,
@@ -63,13 +64,13 @@ impl Starfarer {
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(-10.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+                Vector3::new(-10.0, 0.0, 0.0), Vector3::new(0.0, -40.0, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
                 Vector3::new(10.0, 0.0, 0.0), Vector3::new(20.0, 0.0, 0.0), Quaternion::new(0.01, -0.01, 0.02, 1.0), Vector3::zero()),
-            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(0.0, -1.2, 0.001), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
-            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(0.002, 1.2, 0.0), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(0.5, 0.2, 0.3, 0.3), Vector3::new(0.0, 0.0, 0.2)),
+            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
+            //     Vector3::new(0.0, -1.2, 0.001), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
+            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
+            //     Vector3::new(0.002, 1.2, 0.0), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(0.5, 0.2, 0.3, 0.3), Vector3::new(0.0, 0.0, 0.2)),
         ];
         let player = object_manager.get_object();
         let sun = object_manager.get_object();
@@ -155,6 +156,18 @@ impl InputReceiver for Starfarer {
 }
 
 impl Renderer for Starfarer {
+    fn interaction(tasks: &mut Vec<PhysicsTask>, (o_i, rb_i): (&Object, &RigidBody), (o_j, rb_j): (&Object, &RigidBody)) {
+        if rb_i.mass > 500_000.0 {
+            let dist = rb_j.pos - rb_i.pos;
+            let force = -G * rb_i.mass * rb_j.mass / dist.magnitude2() * dist.normalize();
+            tasks.push(PhysicsTask::AddGlobalForce(*o_j, force));
+        } else if rb_j.mass > 500_000.0 {
+            let dist = rb_i.pos - rb_j.pos;
+            let force = -G * rb_i.mass * rb_j.mass / dist.magnitude2() * dist.normalize();
+            tasks.push(PhysicsTask::AddGlobalForce(*o_i, force));
+        }
+    }
+
     fn load_models(&mut self, _graphics: &Graphics) -> FxHashMap<Object, Vec<DrawState>> {
         let mut map = FxHashMap::default();
         for ship in self.ships.iter_mut() {
@@ -184,10 +197,10 @@ impl Renderer for Starfarer {
     }
 
     fn update(&mut self, graphics: &Graphics, delta_time: f32) -> Vec<PhysicsTask> {
-        let mut tasks = Vec::new();
-
         self.camera.turn(-self.last_deltas.1 as f32 * LOOK_SENSITIVITY * delta_time, -self.last_deltas.0 as f32 * LOOK_SENSITIVITY * delta_time);
         self.last_deltas = (0.0, 0.0);
+
+        let mut tasks = Vec::new();
 
         match self.control_ship {
             Some(ship_index) => self.control_ship(delta_time, ship_index, &mut tasks),

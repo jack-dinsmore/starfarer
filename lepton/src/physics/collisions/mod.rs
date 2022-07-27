@@ -207,6 +207,7 @@ impl GJKState {
                         )
                     },
                     None => {
+                        println!("Non-standard face-face collision: {:?}", vertex_array);
                         let mut my_others = (None, None);
                         for v in &vertex_array {
                             if v.1 != *my {
@@ -225,6 +226,7 @@ impl GJKState {
                 }
             } else if let Some(o) = o_two { // O edge
                 // both edges covered
+                println!("Non-standard face-face collision: {:?}", vertex_array);
                 let mut o_others = (None, None);
                 for v in &vertex_array {
                     if v.2 != *o {
@@ -240,6 +242,7 @@ impl GJKState {
                     (*o, o_others.0.unwrap(), o_others.1.unwrap()),
                 )
             } else {
+                println!("Non-standard face-face collision: {:?}", vertex_array);
                 CollisionType::FaceFace(
                     (vertex_array[0].1, vertex_array[1].1, vertex_array[2].1),
                     (vertex_array[0].2, vertex_array[1].2, vertex_array[2].2)

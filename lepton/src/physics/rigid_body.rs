@@ -4,24 +4,24 @@ use crate::shader::builtin;
 use super::{Updater, Collider, collisions::{GJKState, CollisionType}};
 
 pub struct RigidBody {
-    pub(super) pos: Vector3<f64>,
-    pub(super) vel: Vector3<f64>,
-    pub(super) mass: f64,
-    pub(super) force: Vector3<f64>,
-    pub(super) torque: Vector3<f64>,
+    pub pos: Vector3<f64>,
+    pub vel: Vector3<f64>,
+    pub mass: f64,
+    pub impulse: Vector3<f64>,
+    pub torque_impulse: Vector3<f64>,
 
-    pub(super) orientation: Quaternion<f64>,
-    pub(super) ang_vel: Vector3<f64>, // Local frame
-    pub(super) moi: Matrix3<f64>,
-    pub(super) moi_inv: Matrix3<f64>,
+    pub orientation: Quaternion<f64>,
+    pub ang_vel: Vector3<f64>, // Local frame
+    pub moi: Matrix3<f64>,
+    pub moi_inv: Matrix3<f64>,
     
-    pub(super) updater: Updater,
+    pub updater: Updater,
     
-    pub(super) collider: Collider,
-    pub(super) elasticity: f64,
-    pub(super) collider_offset: Vector3<f64>,
-    pub(super) model_offset: Vector3<f32>,
-    pub(super) collide_normal: Option<Vector3<f64>>,
+    pub collider: Collider,
+    pub elasticity: f64,
+    pub collider_offset: Vector3<f64>,
+    pub model_offset: Vector3<f32>,
+    pub collide_normal: Option<Vector3<f64>>,
 }
 
 impl RigidBody {
@@ -30,8 +30,8 @@ impl RigidBody {
             pos,
             vel,
             mass: 0.0,
-            force: Vector3::new(0.0, 0.0, 0.0),
-            torque: Vector3::new(0.0, 0.0, 0.0),
+            impulse: Vector3::new(0.0, 0.0, 0.0),
+            torque_impulse: Vector3::new(0.0, 0.0, 0.0),
             orientation,
             ang_vel,
             moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
@@ -50,8 +50,8 @@ impl RigidBody {
             pos,
             vel: Vector3::new(0.0, 0.0, 0.0),
             mass: 0.0,
-            force: Vector3::new(0.0, 0.0, 0.0),
-            torque: Vector3::new(0.0, 0.0, 0.0),
+            impulse: Vector3::new(0.0, 0.0, 0.0),
+            torque_impulse: Vector3::new(0.0, 0.0, 0.0),
             orientation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
             ang_vel: Vector3::new(0.0, 0.0, 0.0),
             moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
@@ -75,6 +75,11 @@ impl RigidBody {
         self.moi_inv = self.moi.invert().unwrap();
         self.mass = mass;
         self.updater = Updater::Free;
+        self
+    }
+
+    pub fn gravitate(mut self, mass: f64) -> Self {
+        self.mass = mass;
         self
     }
     
@@ -104,13 +109,13 @@ impl RigidBody {
         match self.updater {
             Updater::Fixed => (),
             Updater::Free => {
-                self.vel += self.force / self.mass * delta_time;
+                self.vel += self.impulse / self.mass;
                 self.pos += self.vel * delta_time;
-                self.ang_vel += self.moi_inv * (self.torque - self.ang_vel.cross(self.moi * self.ang_vel)) * delta_time;
+                self.ang_vel += self.moi_inv * (self.torque_impulse - self.ang_vel.cross(self.moi * self.ang_vel) * delta_time);
                 self.orientation += 0.5 * Quaternion::new(0.0, self.ang_vel.x, self.ang_vel.y, self.ang_vel.z) * self.orientation * delta_time;
                 self.orientation = self.orientation.normalize();
-                self.force = Vector3::zero();
-                self.torque = Vector3::zero();
+                self.impulse = Vector3::zero();
+                self.torque_impulse = Vector3::zero();
                 self.collide_normal = None;
             },
             _ => unimplemented!()

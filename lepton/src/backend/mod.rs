@@ -42,7 +42,7 @@ impl Backend {
 
     /// Run the main game loop. Consumes self.
     pub fn run<L: Renderer + InputReceiver>(mut self, mut graphics: Graphics, mut lepton: L) -> ! {
-        let mut physics = Physics::new(&mut self);
+        let mut physics = Physics::new(&mut self, |tasks, p_i, p_j| { L::interaction(tasks, p_i, p_j) });
 
         // Add objects to graphics and physics
         graphics.object_models = lepton.load_models(&graphics);

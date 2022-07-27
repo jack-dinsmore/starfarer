@@ -190,11 +190,14 @@ impl Planet {
     }
 
     pub fn init_rigid_body(&self, map: &mut FxHashMap<Object, RigidBody>) {
-        map.insert(self.object, RigidBody::new(
-            Vector3::new(1100.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
-            Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
-        )
-        .collide(Collider::Cube{length: 1020.0}, 1.0, Vector3::zero()));
+        map.insert(self.object,
+            RigidBody::new(
+                Vector3::new(1100.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
+                Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
+            )
+            .gravitate(1_000_000.0)
+            //.collide(Collider::Cube{length: 1020.0}, 1.0, Vector3::zero())
+        );
     }
 }
 
