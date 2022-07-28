@@ -97,9 +97,17 @@ Accessory loading. Also rehashed ship model loading so that it's done through a 
 
 Terrain generation & used faster hash functions
 
+# July 28
+
+Collisions, GJK algorithm, and terrain collisions. I had not updated this file for a few days.
+Export with Y forward, Z up.
+Terrain collision
+Collisions put in model file
+
 ## To do:
-- Atmosphere and terrain collision
+- Atmosphere
 - Models can be replaced instead of just destroyed and remade
+- Clean up collision code
 - Docking with the other ship
 - Make sure that double-loaded ships share textures
 - Make the number of descriptor sets for models dynamically set (also, should they be allocated per model or per shader?)

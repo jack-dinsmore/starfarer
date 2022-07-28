@@ -1,78 +1,82 @@
 // GKJ algorithm: http://realtimecollisiondetection.net/pubs/SIGGRAPH04_Ericson_GJK_notes.pdf
 
-use cgmath::{Vector3, InnerSpace};
+use cgmath::{Vector3, InnerSpace, Zero};
 use anyhow::{Result, anyhow};
-use rustc_hash::FxHashMap;
 
 const EPSILON: f64 = 1e-10;
 const MAX_ITERATIONS: u32 = 20;
-type Vertex = (Vector3<f64>, usize, usize);
+type Vertex = (Vector3<f64>, Vector3<f64>, Vector3<f64>);
 
 pub enum Collider {
-    None,
     Cube{length: f64},
+    Radial{func: Box<dyn 'static + Send + Sync + Fn(Vector3<f64>) -> f64>, length: f64 },
+    Polyhedron{vertices: Vec<Vector3<f64>>, length: f64, offset: Vector3<f64>}
 }
 
 impl Collider {
     pub fn cube(length: f64) -> Self {
         Collider::Cube{ length }
     }
+    pub fn planet(func: Box<dyn 'static + Send + Sync + Fn(Vector3<f64>) -> f64>, length: f64) -> Self {
+        Collider::Radial { func, length }
+    }
+    pub fn polyhedron(vertices: Vec<Vector3<f64>>) -> Self {
+        let offset = vertices.iter().map(|v| v).sum::<Vector3<f64>>() / vertices.len() as f64;
+        let vertices = vertices.into_iter().map(|v| v - offset).collect::<Vec<Vector3<f64>>>();
+        let length = vertices.iter().map(|v| v.magnitude2()).max_by(|a, b| a.total_cmp(b)).unwrap();
+        Collider::Polyhedron { vertices, length, offset }
+    }
 }
 
 impl Collider {
-    pub(super) fn support(&self, dir: Vector3<f64>) -> (usize, Vector3<f64>) {
-        let id = match self {
-            Collider::Cube{..} => {
+    pub(super) fn support(&self, dir: Vector3<f64>) -> Vector3<f64> {
+        match self {
+            Collider::Cube{length} => {
                 if dir.x > 0.0 {
                     if dir.y > 0.0 {
                         if dir.z > 0.0 {
-                            0
+                            Vector3::new(*length, *length, *length)
                         } else {
-                            1
+                            Vector3::new(*length, *length, -*length)
                         }
                     } else {
                         if dir.z > 0.0 {
-                            2
+                            Vector3::new(*length, -*length, *length)
                         } else {
-                            3
+                            Vector3::new(*length, -*length, -*length)
                         }
                     }
                 } else {
                     if dir.y > 0.0 {
                         if dir.z > 0.0 {
-                            4
+                            Vector3::new(-*length, *length, *length)
                         } else {
-                            5
+                            Vector3::new(-*length, *length, -*length)
                         }
                     } else {
                         if dir.z > 0.0 {
-                            6
+                            Vector3::new(-*length, -*length, *length)
                         } else {
-                            7
+                            Vector3::new(-*length, -*length, -*length)
                         }
                     }
                 }
             },
-            Collider::None => panic!("Called support on None collider"),
-        };
-        (id, self.id_to_vertex(id))
-    }
-
-    pub(super) fn id_to_vertex(&self, id: usize) -> Vector3<f64> {
-        match self {
-            Collider::None => panic!("Called id select on None collider"),
-            Collider::Cube{length} => {
-                match id {
-                    0 => Vector3::new(*length, *length, *length),
-                    1 => Vector3::new(*length, *length, -*length),
-                    2 => Vector3::new(*length, -*length, *length),
-                    3 => Vector3::new(*length, -*length, -*length),
-                    4 => Vector3::new(-*length, *length, *length),
-                    5 => Vector3::new(-*length, *length, -*length),
-                    6 => Vector3::new(-*length, -*length, *length),
-                    7 => Vector3::new(-*length, -*length, -*length),
-                    _ => unreachable!(),
+            Collider::Radial{func, ..} => {
+                dir * func(dir)
+            },
+            Collider::Polyhedron { vertices, .. } => {
+                //// Later, implement a binary tree?
+                let mut max_dot = 0.0;
+                let mut max_v = None;
+                for v in vertices {
+                    let dot = v.dot(dir);
+                    if dot > max_dot || max_v.is_none() {
+                        max_dot = dot;
+                        max_v = Some(v);
+                    }
                 }
+                *max_v.unwrap()
             }
         }
     }
@@ -80,16 +84,25 @@ impl Collider {
     pub(super) fn radius(&self) -> f64 {
         match self {
             Collider::Cube{length} =>  *length * 2.0f64.sqrt(),
-            _ => unreachable!()
+            Collider::Radial{length, ..} =>  *length,
+            Collider::Polyhedron{length, ..} =>  *length,
+        }
+    }
+
+    pub(super) fn offset(&self) -> Vector3<f64> {
+        match self {
+            Collider::Cube{..} => Vector3::zero(),
+            Collider::Radial{..} => Vector3::zero(),
+            Collider::Polyhedron { offset, ..} => *offset,
         }
     }
 }
 
 pub(super) enum CollisionType {
-    EdgeEdge((usize, usize), (usize, usize)),
-    FaceVertex((usize, usize, usize), (usize,)),
-    VertexFace((usize,), (usize, usize, usize)),
-    FaceFace((usize, usize, usize), (usize, usize, usize)),
+    EdgeEdge((Vector3<f64>, Vector3<f64>), (Vector3<f64>, Vector3<f64>)),
+    FaceVertex((Vector3<f64>, Vector3<f64>, Vector3<f64>), (Vector3<f64>,)),
+    VertexFace((Vector3<f64>,), (Vector3<f64>, Vector3<f64>, Vector3<f64>)),
+    FaceFace((Vector3<f64>, Vector3<f64>, Vector3<f64>), (Vector3<f64>, Vector3<f64>, Vector3<f64>)),
 }
 
 pub(super) struct GJKState {
@@ -128,27 +141,19 @@ impl GJKState {
 
     pub fn get_collision_type(&mut self) -> Result<CollisionType> {
         Ok(if let Simplex::Tetrahedron(a, b, c, d) = self.simplex {
-            let mut my_vertices = FxHashMap::default();
-            let mut o_vertices = FxHashMap::default();
+            let mut my_vertices = VertexCounter::new();
+            let mut o_vertices = VertexCounter::new();
             let vertex_array = [a, b, c, d];
             for v in &vertex_array {
-                if my_vertices.contains_key(&v.1) {
-                    *my_vertices.get_mut(&v.1).unwrap() += 1;
-                } else {
-                    my_vertices.insert(v.1, 1);
-                }
-                if o_vertices.contains_key(&v.2) {
-                    *o_vertices.get_mut(&v.2).unwrap() += 1;
-                } else {
-                    o_vertices.insert(v.2, 1);
-                }
+                my_vertices.add(v.1);
+                o_vertices.add(v.2);
             }
 
             let mut my_three = None;
             let mut my_two = None;
             let mut o_three = None;
             let mut o_two = None;
-            for (k, v) in &my_vertices {
+            for (k, v) in my_vertices.iter() {
                 if *v == 3 {
                     my_three = Some(k);
                 }
@@ -156,7 +161,7 @@ impl GJKState {
                     my_two = Some(k);
                 }
             }
-            for (k, v) in &o_vertices {
+            for (k, v) in o_vertices.iter() {
                 if *v == 3 {
                     o_three = Some(k);
                 }
@@ -168,16 +173,17 @@ impl GJKState {
             if let Some(v) = my_three { // My vertex
                 CollisionType::VertexFace(
                     (*v,), 
-                    (*o_vertices.keys().nth(0).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
-                    *o_vertices.keys().nth(1).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
-                    *o_vertices.keys().nth(2).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?))
-
+                    (*o_vertices.keys().iter().nth(0).ok_or(anyhow!("Face case didn't find three vertices"))?,
+                    *o_vertices.keys().iter().nth(1).ok_or(anyhow!("Face case didn't find three vertices"))?,
+                    *o_vertices.keys().iter().nth(2).ok_or(anyhow!("Face case didn't find three vertices"))?)
+                )
             } else if let Some(v) = o_three { // Other vertex
                 CollisionType::FaceVertex(
-                    (*my_vertices.keys().nth(0).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
-                    *my_vertices.keys().nth(1).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?,
-                    *my_vertices.keys().nth(2).ok_or(anyhow!("Face case didn't find three vertices; {:?}, {:?}", my_vertices, o_vertices))?),
-                    (*v,))
+                    (*my_vertices.keys().iter().nth(0).ok_or(anyhow!("Face case didn't find three vertices"))?,
+                    *my_vertices.keys().iter().nth(1).ok_or(anyhow!("Face case didn't find three vertices"))?,
+                    *my_vertices.keys().iter().nth(2).ok_or(anyhow!("Face case didn't find three vertices"))?),
+                    (*v,)
+                )
             } else if let Some(my) = my_two { // My edge
                 match o_two {
                     Some(o) => {
@@ -207,7 +213,7 @@ impl GJKState {
                         )
                     },
                     None => {
-                        println!("Non-standard face-face collision: {:?}", vertex_array);
+                        println!("Non-standard face-face collision: {:?},  {:?}", my_vertices, o_vertices);
                         let mut my_others = (None, None);
                         for v in &vertex_array {
                             if v.1 != *my {
@@ -219,14 +225,18 @@ impl GJKState {
                             }
                         }
                         CollisionType::FaceFace(
-                            (*my, my_others.0.unwrap(), my_others.1.unwrap()),
-                            (vertex_array[0].2, vertex_array[1].2, vertex_array[2].2)
+                            (*my,
+                            my_others.0.unwrap(),
+                            my_others.1.unwrap()),
+                            (vertex_array[0].2,
+                            vertex_array[1].2,
+                            vertex_array[2].2)
                         )
                     },
                 }
             } else if let Some(o) = o_two { // O edge
                 // both edges covered
-                println!("Non-standard face-face collision: {:?}", vertex_array);
+                println!("Non-standard face-face collision: {:?}, {:?}", my_vertices, o_vertices);
                 let mut o_others = (None, None);
                 for v in &vertex_array {
                     if v.2 != *o {
@@ -238,14 +248,22 @@ impl GJKState {
                     }
                 }
                 CollisionType::FaceFace(
-                    (vertex_array[0].1, vertex_array[1].1, vertex_array[2].1),
-                    (*o, o_others.0.unwrap(), o_others.1.unwrap()),
+                    (vertex_array[0].1,
+                    vertex_array[1].1,
+                    vertex_array[2].1),
+                    (*o,
+                    o_others.0.unwrap(),
+                    o_others.1.unwrap()),
                 )
             } else {
-                println!("Non-standard face-face collision: {:?}", vertex_array);
+                println!("Non-standard face-face collision: {:?}, {:?}", my_vertices, o_vertices);
                 CollisionType::FaceFace(
-                    (vertex_array[0].1, vertex_array[1].1, vertex_array[2].1),
-                    (vertex_array[0].2, vertex_array[1].2, vertex_array[2].2)
+                    (vertex_array[0].1,
+                    vertex_array[1].1,
+                    vertex_array[2].1),
+                    (vertex_array[0].2,
+                    vertex_array[1].2,
+                    vertex_array[2].2)
                 )
             }
         } else {
@@ -430,5 +448,37 @@ impl Simplex {
                 Some(a.0)
             }
         }
+    }
+}
+
+#[derive(Debug)]
+struct VertexCounter {
+    counts: Vec<(Vector3<f64>, usize)>,
+}
+
+impl VertexCounter {
+    fn new() -> Self {
+        Self { counts: Vec::new() }
+    }
+
+    fn add(&mut self, v: Vector3<f64>) {
+        let mut added = false;
+        for (a, i) in &mut self.counts {
+            if *a == v {
+                *i += 1;
+                added = true;
+            }
+        }
+        if !added {
+            self.counts.push((v, 1))
+        }
+    }
+
+    fn iter(&self) -> std::slice::Iter<(Vector3<f64>, usize)> {
+        self.counts.iter()
+    }
+
+    fn keys(&self) -> Vec<Vector3<f64>> {
+        self.counts.iter().map(|(k, _)| {*k}).collect()
     }
 }

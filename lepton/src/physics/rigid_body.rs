@@ -1,7 +1,7 @@
 use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Zero, InnerSpace, SquareMatrix, Rotation};
 
 use crate::shader::builtin;
-use super::{Updater, Collider, collisions::{GJKState, CollisionType}};
+use super::{Updater, Collider, collider::{GJKState, CollisionType}};
 
 pub struct RigidBody {
     pub pos: Vector3<f64>,
@@ -17,9 +17,8 @@ pub struct RigidBody {
     
     pub updater: Updater,
     
-    pub collider: Collider,
+    pub colliders: Vec<Collider>,
     pub elasticity: f64,
-    pub collider_offset: Vector3<f64>,
     pub model_offset: Vector3<f32>,
     pub collide_normal: Option<Vector3<f64>>,
 }
@@ -37,9 +36,8 @@ impl RigidBody {
             moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             moi_inv: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
-            collider: Collider::None,
+            colliders: Vec::new(),
             elasticity: 1.0,
-            collider_offset: Vector3::zero(),
             model_offset: Vector3::new(0.0, 0.0, 0.0),
             collide_normal: None,
         }
@@ -57,9 +55,8 @@ impl RigidBody {
             moi: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             moi_inv: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             updater: Updater::Fixed,
-            collider: Collider::None,
+            colliders: Vec::new(),
             elasticity: 1.0,
-            collider_offset: Vector3::zero(),
             model_offset: Vector3::new(0.0, 0.0, 0.0),
             collide_normal: None,
         }
@@ -83,10 +80,9 @@ impl RigidBody {
         self
     }
     
-    pub fn collide(mut self, collider: Collider, elasticity: f64, collider_offset: Vector3<f64>) -> Self {
-        self.collider = collider;
+    pub fn collide(mut self, colliders: Vec<Collider>, elasticity: f64) -> Self {
+        self.colliders = colliders;
         self.elasticity = elasticity;
-        self.collider_offset = collider_offset;
         self
     }
 
@@ -126,86 +122,90 @@ impl RigidBody {
     pub(crate) fn detect_collision_dist(&self, o: &RigidBody) -> Option<(Vector3<f64>, Vector3<f64>)> {
         // Work in axis-aligned frame, self-centric.
 
-        // Confirm both colliders are active
-        if let Collider::None = self.collider {
-            return None;
-        }
-        if let Collider::None = o.collider {
-            return None;
-        }
+        for my_c in &self.colliders {
+            for o_c in &o.colliders {
+                // Confirm the objects are within collision distance
+                let my_c_offset = my_c.offset();
+                let o_c_offset = o_c.offset();
+                let displacement = o.pos - self.pos - my_c_offset + o_c_offset;
+                if displacement.magnitude() > my_c.radius() + o_c.radius() {
+                    continue;
+                }
 
-        // Confirm the objects are within collision distance
-        let displacement = o.pos - self.pos - self.collider_offset + o.collider_offset;
-        if displacement.magnitude() > self.collider.radius() + o.collider.radius() {
-            return None;
-        }
-        
-        // Initialization
-        let my_inv_orientation = self.orientation.invert();
-        let o_inv_orientation = o.orientation.invert();
-        let initial_axis = Vector3::new(1.0, 0.1, 0.06).normalize();
+                // Initialization
+                let my_inv_orientation = self.orientation.invert();
+                let o_inv_orientation = o.orientation.invert();
+                let initial_axis = displacement.normalize();
 
-        let (my_id, my_pos) = self.collider.support(my_inv_orientation * initial_axis);
-        let (o_id, o_pos) = o.collider.support(o_inv_orientation * -initial_axis);
-        let mut dir = -(self.orientation * my_pos - (o.orientation * o_pos + displacement));
-        let mut state = GJKState::new((-dir, my_id, o_id));
-        loop {
-            dir = dir.normalize();
-            let (my_id, my_pos) = self.collider.support(my_inv_orientation * dir);
-            let (o_id, o_pos) = o.collider.support(o_inv_orientation * -dir);
-            let new_vec = self.orientation * my_pos - (o.orientation * o_pos + displacement);
+                let my_pos = my_c.support(my_inv_orientation * initial_axis);
+                let o_pos = o_c.support(o_inv_orientation * -initial_axis);
+                let mut dir = -(self.orientation * my_pos - (o.orientation * o_pos + displacement));
+                let mut state = GJKState::new((-dir, my_pos, o_pos));
+                let collision = loop {
+                    dir = dir.normalize();
+                    let my_pos = my_c.support(my_inv_orientation * dir);
+                    let o_pos = o_c.support(o_inv_orientation * -dir);
+                    let new_vec = self.orientation * my_pos - (o.orientation * o_pos + displacement);
 
-            if new_vec.dot(dir) < 0.0 {
-                return None;
-            }
-            state.push((new_vec, my_id, o_id));
-            if match state.contains_origin(&mut dir) {
-                Err(_) => return None,
-                Ok(b) => b
-            } {
-                // Process collision
-                let (p1, p2, center, mut normal) = match state.get_collision_type() {
-                    Ok(t) => match t{
-                        CollisionType::FaceVertex((v0, v1, v2), (o0,)) => {
-                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
-                            let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
-                            let v2 = self.orientation * self.collider.id_to_vertex(v2) + self.collider_offset;
-                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            (v0, o0, o0, (v1 - v0).cross(v2 - v0))
-                        },
-                        CollisionType::VertexFace((v0,), (o0, o1, o2)) => {
-                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
-                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            let o2 = o.orientation * o.collider.id_to_vertex(o2) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            (v0, o0, v0, (o1 - o0).cross(o2 - o0))
-                        },
-                        CollisionType::EdgeEdge((v0, v1), (o0, o1)) => {
-                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
-                            let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
-                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            (v0, o0, (v0 + o0 + v1 + o1) / 4.0, (v1 - v0).cross(o1 - o0))
-                        },
-                        CollisionType::FaceFace((v0, v1, v2), (o0, o1, o2)) => {
-                            let v0 = self.orientation * self.collider.id_to_vertex(v0) + self.collider_offset;
-                            let v1 = self.orientation * self.collider.id_to_vertex(v1) + self.collider_offset;
-                            let v2 = self.orientation * self.collider.id_to_vertex(v2) + self.collider_offset;
-                            let o0 = o.orientation * o.collider.id_to_vertex(o0) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            let o1 = o.orientation * o.collider.id_to_vertex(o1) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            let o2 = o.orientation * o.collider.id_to_vertex(o2) + self.collider_offset - o.collider_offset + o.pos - self.pos;
-                            (v0, o0, (v0 + v1 + v2 + o0 + o1 + o2) / 6.0, (o1 - o0).cross(o2 - o0) + (v1 - v0).cross(v2 - v0))
-                        },
-                    },
-                    Err(e) => {
-                        println!("Could not resolve collison because {:?}", e);
-                        return None;
+                    if new_vec.dot(dir) < 0.0 {
+                        break None;
+                    }
+                    state.push((new_vec, my_pos, o_pos));
+                    if match state.contains_origin(&mut dir) {
+                        Err(_) => break None,
+                        Ok(b) => b
+                    } {
+                        // Process collision
+                        let (p1, p2, center, mut normal) = match state.get_collision_type() {
+                            Ok(t) => match t{
+                                CollisionType::FaceVertex((v0, v1, v2), (o0,)) => {
+                                    let v0 = self.orientation * v0 + my_c_offset;
+                                    let v1 = self.orientation * v1 + my_c_offset;
+                                    let v2 = self.orientation * v2 + my_c_offset;
+                                    let o0 = o.orientation * o0 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    (v0, o0, o0, (v1 - v0).cross(v2 - v0))
+                                },
+                                CollisionType::VertexFace((v0,), (o0, o1, o2)) => {
+                                    let v0 = self.orientation * v0 + my_c_offset;
+                                    let o0 = o.orientation * o0 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    let o1 = o.orientation * o1 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    let o2 = o.orientation * o2 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    (v0, o0, v0, (o1 - o0).cross(o2 - o0))
+                                },
+                                CollisionType::EdgeEdge((v0, v1), (o0, o1)) => {
+                                    let v0 = self.orientation * v0 + my_c_offset;
+                                    let v1 = self.orientation * v1 + my_c_offset;
+                                    let o0 = o.orientation * o0 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    let o1 = o.orientation * o1 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    (v0, o0, (v0 + o0 + v1 + o1) / 4.0, (v1 - v0).cross(o1 - o0))
+                                },
+                                CollisionType::FaceFace((v0, v1, v2), (o0, o1, o2)) => {
+                                    break None;
+                                    // let v0 = self.orientation * v0 + my_c_offset;
+                                    // let v1 = self.orientation * v1 + my_c_offset;
+                                    // let v2 = self.orientation * v2 + my_c_offset;
+                                    // let o0 = o.orientation * o0 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    // let o1 = o.orientation * o1 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    // let o2 = o.orientation * o2 + my_c_offset - o_c_offset + o.pos - self.pos;
+                                    // let center = (v0 + v1 + v2 + o0 + o1 + o2) / 6.0;
+                                    // (v0, o0, center.dot(displacement) * displacement / displacement.magnitude2(), (o1 - o0).cross(o2 - o0) + (v1 - v0).cross(v2 - v0))
+                                },
+                            },
+                            Err(e) => {
+                                println!("Could not resolve collison because {:?}", e);
+                                break None;
+                            }
+                        };
+
+                        normal *= normal.dot(p2 - p1) / normal.magnitude2();
+                        break Some((normal, center));
                     }
                 };
-
-                normal *= normal.dot(p2 - p1) / normal.magnitude2();
-                return Some((normal, center));
+                if let Some(c) = collision {
+                    return Some(c);
+                }
             }
         }
+        None
     }
 }

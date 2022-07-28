@@ -4,11 +4,12 @@ mod primitives;
 mod bytecode;
 mod part;
 use lepton::prelude::*;
-use cgmath::{Vector3, Quaternion, InnerSpace, Zero};
+use cgmath::{Vector3, Quaternion, InnerSpace};
 use lepton::prelude::vertex::VertexLP;
 use std::collections::HashMap;
 use std::rc::Rc;
 use starfarer_macros::include_model;
+use serde::{Serialize, Deserialize};
 
 use part::*;
 use primitives::*;
@@ -32,6 +33,12 @@ impl ShipLoader {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Mesh {
+    ModelMesh(Vec<VertexLP>, Vec<u32>),
+    ColliderMesh(Vec<[f32; 3]>)
+}
+
 impl ShipLoader {
     /// Returns None if the model is known not to exist, and Some if the model does exist. Loads the model if it has not been loaded.
     fn acquire_models(&mut self, graphics: &Graphics, low_poly_shader: &Shader<builtin::LPSignature>, part_id: PartID) -> &HashMap<String, Rc<Model>> {
@@ -47,12 +54,26 @@ impl ShipLoader {
     fn load_models(&self, graphics: &Graphics, low_poly_shader: &Shader<builtin::LPSignature>, part_id: PartID) -> HashMap<String, Rc<Model>> {
         let mut output = HashMap::new();
         for (key, value) in self.load_model_data(part_id).into_iter() {
-            output.insert(key, Rc::new(Model::new(graphics, low_poly_shader, VertexType::Specified(value.0, value.1), TextureType::None).unwrap()));
+            if let Mesh::ModelMesh(vertices, indices) = value {
+                output.insert(key, Rc::new(Model::new(graphics, low_poly_shader, VertexType::Specified(vertices, indices), TextureType::None).unwrap()));
+            }
         }
         output
     }
 
-    fn load_model_data(&self, part_id: PartID) -> HashMap<String, (Vec<VertexLP>, Vec<u32>)> {
+    fn load_colliders(&self, part_id: PartID) -> Vec<Collider> {
+        let mut output = Vec::new();
+        for value in self.load_model_data(part_id).into_values() {
+            if let Mesh::ColliderMesh(vertices) = value {
+                output.push(Collider::polyhedron(vertices.into_iter().map(
+                    |a| Vector3::new(a[0] as f64, a[1] as f64, a[2] as f64)
+                ).collect()));
+            }
+        }
+        output
+    }
+
+    fn load_model_data(&self, part_id: PartID) -> HashMap<String, Mesh> {
         // Look for part id in the paths dict
         match self.paths.get(&part_id) {
             Some(_) => unimplemented!("Loading models from a file is not implemented"),
@@ -131,7 +152,7 @@ impl Ship {
         let rigid_body = Some(RigidBody::new(pos, vel, orientation, ang_vel)
             .motivate(data.mass, data.moment_of_inertia)
             .offset(data.center_of_mass)
-            .collide(Collider::cube(1.0), 1.0, Vector3::zero())
+            .collide(ship_loader.load_colliders(data.id), data.elasticity)
         );
         let mut attachments = Vec::with_capacity(data.attachments.len());
         for attachment in data.attachments.into_iter() {

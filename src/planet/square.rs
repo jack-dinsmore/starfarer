@@ -70,20 +70,20 @@ pub struct PlanetSettings {
     pub radius: f64,
 }
 
-pub struct Square<F: Fn([f64; 3]) -> f64> {
+pub struct Square<F: Fn(Vector3<f64>) -> f64> {
     id: MapID,
     degree: LoadDegree,
     settings: PlanetSettings,
-    height_fn: F,
+    value_fn: F,
 }
 
-impl<F: Fn([f64; 3]) -> f64> Square<F> {
-    pub fn new(id: MapID, degree: LoadDegree, settings: PlanetSettings, height_fn: F) -> Self {
+impl<F: Fn(Vector3<f64>) -> f64> Square<F> {
+    pub fn new(id: MapID, degree: LoadDegree, settings: PlanetSettings, value_fn: F) -> Self {
         Self {
             id,
             degree,
             settings,
-            height_fn
+            value_fn
         }
     }
 
@@ -141,14 +141,14 @@ impl<F: Fn([f64; 3]) -> f64> Square<F> {
     }
 }
 
-impl<F: Fn([f64; 3]) -> f64> Square<F> {
+impl<F: Fn(Vector3<f64>) -> f64> Square<F> {
     fn get_points(&self, height_index: u32, pos_map: &[Vector3<f64>], target: &mut Vec<f64>) {
         let map_subdivision = self.settings.map_subdivision >> (self.degree as u8);
         let mut vertex = 0;
         let radius_frac = 1.0 - self.settings.height / 2.0 + height_index as f64 * self.settings.height / self.settings.height_subdivision as f64;
         for _row_num in 0..(map_subdivision + 1) {
             for _col_num in 0..(map_subdivision + 1) {
-                target.push((self.height_fn)([radius_frac * pos_map[vertex].x, radius_frac * pos_map[vertex].y, radius_frac * pos_map[vertex].z]));
+                target.push((self.value_fn)(radius_frac * pos_map[vertex]));
                 vertex += 1;
             }
         }

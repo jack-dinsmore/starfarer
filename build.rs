@@ -24,6 +24,7 @@ fn enterprise() {
             }
         ],
         seat_pos: Vector3::new(0.3767, 0.0, 0.5515),
+        elasticity: 0.5,
     }).unwrap()).unwrap();
     
     fs::write(Path::new(&format!("{}/accessories/chair.dat", ROOT_PATH)), bincode::serialize(&PartData {
@@ -71,6 +72,7 @@ fn test() {
         ),
         attachments: Vec::new(),
         seat_pos: Vector3::zero(),
+        elasticity: 0.5,
     }).unwrap()).unwrap();
 }
 

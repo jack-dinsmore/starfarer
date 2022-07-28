@@ -5,6 +5,76 @@ use std::io::{Read, Cursor};
 use std::collections::HashMap;
 use crate::common::*;
 
+fn load_model(m: &tobj::Model, materials: &Vec<tobj::Material>, output: &mut HashMap<String, Mesh>) {
+    if !output.contains_key(&m.name) {
+        output.insert(m.name.clone(), Mesh::ModelMesh(Vec::new(), Vec::new()));
+    }
+    let (vertices, indices) = match output.get_mut(&m.name).unwrap() {
+        Mesh::ModelMesh(v, i) => (v, i),
+        _ => unreachable!(),
+    };
+    let material = &materials[m.mesh.material_id.unwrap()];
+    let total_normals_count = m.mesh.normals.len() / 3;
+    let total_vertices_count = m.mesh.positions.len() / 3;
+    if total_normals_count != total_vertices_count {
+        println!("There are {} more vertices than normals.", total_vertices_count - total_normals_count);
+    }
+    indices.reserve(m.mesh.indices.len());
+    for i in &m.mesh.indices {
+        indices.push(*i + vertices.len() as u32);
+    }
+
+    vertices.reserve(total_normals_count);
+    for i in 0..total_normals_count {
+        let vertex = VertexLP {
+            pos: [
+                m.mesh.positions[i * 3],
+                m.mesh.positions[i * 3 + 1],
+                m.mesh.positions[i * 3 + 2],
+            ],
+            normal: [
+                m.mesh.normals[i * 3],
+                m.mesh.normals[i * 3 + 1],
+                m.mesh.normals[i * 3 + 2],
+            ],
+            color: [
+                material.diffuse[0],
+                material.diffuse[1],
+                material.diffuse[2],
+                material.dissolve,
+            ],
+            info: [
+                material.specular[0],
+                material.shininess,
+                0.0, // Ambience (not implemented)
+            ],
+        };
+        vertices.push(vertex);
+    }
+}
+
+fn load_collider(m: &tobj::Model, _materials: &Vec<tobj::Material>, output: &mut HashMap<String, Mesh>) {
+    if !output.contains_key(&m.name) {
+        output.insert(m.name.clone(), Mesh::ColliderMesh(Vec::new()));
+    }
+    let vertices = match output.get_mut(&m.name).unwrap() {
+        Mesh::ColliderMesh(v) => v,
+        _ => unreachable!(),
+    };
+    let total_normals_count = m.mesh.normals.len() / 3;
+    vertices.reserve(total_normals_count);
+    for i in 0..total_normals_count {
+        let pos = [
+            m.mesh.positions[i * 3],
+            m.mesh.positions[i * 3 + 1],
+            m.mesh.positions[i * 3 + 2],
+        ];
+        if !vertices.contains(&pos) {
+            vertices.push(pos);
+        }
+    }
+}
+
 pub fn load_obj(obj_path: &Path, mtl_path: &Path) -> Result<ModelData> {
     let mut output = HashMap::new();
 
@@ -19,48 +89,12 @@ pub fn load_obj(obj_path: &Path, mtl_path: &Path) -> Result<ModelData> {
     let (models, _) = model_obj;
     
     for m in models.iter() {
-        if !output.contains_key(&m.name) {
-            output.insert(m.name.clone(), (Vec::new(), Vec::new()));
-        }
-        let (vertices, indices) = output.get_mut(&m.name).unwrap();
-        let material = &materials[m.mesh.material_id.unwrap()];
-        let total_normals_count = m.mesh.normals.len() / 3;
-        let total_vertices_count = m.mesh.positions.len() / 3;
-        if total_normals_count != total_vertices_count {
-            println!("There are {} more vertices than normals.", total_vertices_count - total_normals_count);
-        }
-        indices.reserve(m.mesh.indices.len());
-        for i in &m.mesh.indices {
-            indices.push(*i + vertices.len() as u32);
-        }
-
-        vertices.reserve(total_normals_count);
-        for i in 0..total_normals_count {
-            let vertex = VertexLP {
-                pos: [
-                    m.mesh.positions[i * 3],
-                    m.mesh.positions[i * 3 + 1],
-                    m.mesh.positions[i * 3 + 2],
-                ],
-                normal: [
-                    m.mesh.normals[i * 3],
-                    m.mesh.normals[i * 3 + 1],
-                    m.mesh.normals[i * 3 + 2],
-                ],
-                color: [
-                    material.diffuse[0],
-                    material.diffuse[1],
-                    material.diffuse[2],
-                    material.dissolve,
-                ],
-                info: [
-                    material.specular[0],
-                    material.shininess,
-                    0.0, // Ambience (not implemented)
-                ],
-            };
-            vertices.push(vertex);
-        }
+        if m.name.starts_with("collider") {
+            load_collider(m, &materials, &mut output);
+        } else {
+            load_model(m, &materials, &mut output);
+        };
+        
     }
     Ok(output)
 }

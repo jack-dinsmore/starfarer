@@ -5,7 +5,13 @@ pub const N_CHARS: usize = N_COLS * N_ROWS;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
-pub type ModelData = HashMap<String, (Vec<VertexLP>, Vec<u32>)>;
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Mesh {
+    ModelMesh(Vec<VertexLP>, Vec<u32>),
+    ColliderMesh(Vec<[f32; 3]>)
+}
+
+pub type ModelData = HashMap<String, Mesh>;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

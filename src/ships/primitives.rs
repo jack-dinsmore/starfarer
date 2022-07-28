@@ -87,6 +87,7 @@ pub struct ShipData {
     pub attachments: Vec<PartInstance>,
     #[serde(with = "FakeVector")]
     pub seat_pos: Vector3<f32>,
+    pub elasticity: f64,
 }
 
 #[derive(Serialize, Deserialize)]

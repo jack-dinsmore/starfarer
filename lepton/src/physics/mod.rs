@@ -1,12 +1,12 @@
 mod rigid_body;
-mod collisions;
+mod collider;
 
 use std::sync::mpsc::{Receiver, Sender};
 use rustc_hash::FxHashMap;
 use cgmath::{Vector3, InnerSpace};
 
 pub use rigid_body::*;
-pub use collisions::*;
+pub use collider::*;
 use crate::backend::{Backend};
 use crate::graphics::{GraphicsData, GraphicsInnerData};
 
@@ -126,7 +126,7 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
             }
         }
 
-        self.physics_data_sender.send(interaction_forces);
+        self.physics_data_sender.send(interaction_forces).unwrap();
 
         // Add forces
         for task_vec in self.physics_data_receiver.try_iter() {
