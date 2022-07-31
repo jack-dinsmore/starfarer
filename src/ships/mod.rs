@@ -151,7 +151,7 @@ impl Ship {
 
         let rigid_body = Some(RigidBody::new(pos, vel, orientation, ang_vel)
             .motivate(data.mass, data.moment_of_inertia)
-            .offset(data.center_of_mass)
+            .offset(-data.center_of_mass)
             .collide(ship_loader.load_colliders(data.id), data.elasticity)
         );
         let mut attachments = Vec::with_capacity(data.attachments.len());
@@ -220,7 +220,7 @@ impl Ship {
             - Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::Q) as u32) as f32)
             + Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::E) as u32) as f32);
         if ship_torque.magnitude() > 0.0 {
-            ship_torque *= delta_time * 20_000.0 / ship_torque.magnitude();
+            ship_torque *= delta_time * 200_000.0 / ship_torque.magnitude();
         }
         self.tasks.push(PhysicsTask::AddLocalImpulseTorque(self.object, ship_torque.cast().unwrap()));
     }

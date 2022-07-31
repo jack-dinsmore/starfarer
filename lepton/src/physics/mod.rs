@@ -13,6 +13,8 @@ use crate::graphics::{GraphicsData, GraphicsInnerData};
 pub(crate) type PhysicsData = Vec<PhysicsTask>;
 pub type Object = u16;
 
+pub(self) const LIMIT_IMPULSE: bool = false;
+
 
 pub struct ObjectManager {
     max_id: Object,
@@ -91,22 +93,23 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                 }
 
                 (self.interaction)(&mut interaction_forces, (o_i, rb_i), (o_j, rb_j));
-
-                if let Some((n, r)) = rb_i.detect_collision_dist(&rb_j) {
+                
+                if let Some((n, r)) = rb_i.detect_collision_dist(&rb_j, delta_time as f64 * (rb_j.vel - rb_i.vel)) {
                     let r1 = r;
                     let r2 = r - (rb_j.pos - rb_i.pos);
                     let rel_vel = rb_j.vel + rb_j.ang_vel.cross(r1) - rb_i.vel - rb_i.ang_vel.cross(r2);
                     let elasticity = (rb_i.elasticity * rb_j.elasticity).sqrt();
                     let normal = n.normalize();
-                    let i_denom = match rb_i.updater {
-                        Updater::Fixed => 0.0,
-                        _ => 1.0 / rb_i.mass + normal.dot(rb_i.moi_inv * (r1.cross(normal).cross(r1)))
+                    let (minimum_mass, i_denom) = match rb_i.updater {
+                        Updater::Fixed => (f64::INFINITY, 0.0),
+                        _ => (rb_i.mass, 1.0 / rb_i.mass + normal.dot(rb_i.moi_inv() * (r1.cross(normal).cross(r1))))
                     };
-                    let j_denom = match rb_j.updater {
-                        Updater::Fixed => 0.0,
-                        _ => 1.0 / rb_j.mass + normal.dot(rb_j.moi_inv * (r2.cross(normal).cross(r2)))
+                    let (minimum_mass, j_denom) = match rb_j.updater {
+                        Updater::Fixed => (minimum_mass, 0.0),
+                        _ => (if rb_j.mass < minimum_mass {rb_j.mass} else {minimum_mass},
+                            1.0 / rb_j.mass + normal.dot(rb_j.moi_inv() * (r2.cross(normal).cross(r2))))
                     };
-                    let impulse = -(1.0 + elasticity) * normal.dot(rel_vel) * normal / (i_denom + j_denom);
+                    let mut impulse = -(1.0 + elasticity) * normal.dot(rel_vel) * normal / (i_denom + j_denom);
 
                     let (rb_i, rb_j): (&mut RigidBody, &mut RigidBody) = unsafe {
                         // Convert to mutable references. This is safe because they are non-identical and I'm not editing the hash.
@@ -114,6 +117,12 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                         let j_ptr = rb_j as *const _ as *mut _;
                         (&mut *i_ptr, &mut *j_ptr)
                     };
+
+                    let impulse_limit = minimum_mass * 100.0;
+                    if LIMIT_IMPULSE && impulse.magnitude2() < impulse_limit * impulse_limit {
+                        println!("Impulse limit {} exceeded!", impulse_limit);
+                        impulse = impulse.normalize();
+                    }
 
                     rb_i.impulse -= impulse;
                     rb_i.torque_impulse -= r1.cross(impulse);

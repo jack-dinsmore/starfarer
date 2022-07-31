@@ -23,7 +23,7 @@ impl Collider {
     pub fn polyhedron(vertices: Vec<Vector3<f64>>) -> Self {
         let offset = vertices.iter().map(|v| v).sum::<Vector3<f64>>() / vertices.len() as f64;
         let vertices = vertices.into_iter().map(|v| v - offset).collect::<Vec<Vector3<f64>>>();
-        let length = vertices.iter().map(|v| v.magnitude2()).max_by(|a, b| a.total_cmp(b)).unwrap();
+        let length = vertices.iter().map(|v| v.magnitude2()).max_by(|a, b| a.total_cmp(b)).unwrap().sqrt();
         Collider::Polyhedron { vertices, length, offset }
     }
 }
@@ -102,7 +102,7 @@ pub(super) enum CollisionType {
     EdgeEdge((Vector3<f64>, Vector3<f64>), (Vector3<f64>, Vector3<f64>)),
     FaceVertex((Vector3<f64>, Vector3<f64>, Vector3<f64>), (Vector3<f64>,)),
     VertexFace((Vector3<f64>,), (Vector3<f64>, Vector3<f64>, Vector3<f64>)),
-    FaceFace((Vector3<f64>, Vector3<f64>, Vector3<f64>), (Vector3<f64>, Vector3<f64>, Vector3<f64>)),
+    Other,
 }
 
 pub(super) struct GJKState {
@@ -139,8 +139,8 @@ impl GJKState {
         Ok(false)
     }
 
-    pub fn get_collision_type(&mut self) -> Result<CollisionType> {
-        Ok(if let Simplex::Tetrahedron(a, b, c, d) = self.simplex {
+    pub fn get_collision_type(&mut self) -> CollisionType {
+        if let Simplex::Tetrahedron(a, b, c, d) = self.simplex {
             let mut my_vertices = VertexCounter::new();
             let mut o_vertices = VertexCounter::new();
             let vertex_array = [a, b, c, d];
@@ -173,15 +173,15 @@ impl GJKState {
             if let Some(v) = my_three { // My vertex
                 CollisionType::VertexFace(
                     (*v,), 
-                    (*o_vertices.keys().iter().nth(0).ok_or(anyhow!("Face case didn't find three vertices"))?,
-                    *o_vertices.keys().iter().nth(1).ok_or(anyhow!("Face case didn't find three vertices"))?,
-                    *o_vertices.keys().iter().nth(2).ok_or(anyhow!("Face case didn't find three vertices"))?)
+                    (*o_vertices.keys().iter().nth(0).unwrap(),
+                    *o_vertices.keys().iter().nth(1).unwrap(),
+                    *o_vertices.keys().iter().nth(2).unwrap())
                 )
             } else if let Some(v) = o_three { // Other vertex
                 CollisionType::FaceVertex(
-                    (*my_vertices.keys().iter().nth(0).ok_or(anyhow!("Face case didn't find three vertices"))?,
-                    *my_vertices.keys().iter().nth(1).ok_or(anyhow!("Face case didn't find three vertices"))?,
-                    *my_vertices.keys().iter().nth(2).ok_or(anyhow!("Face case didn't find three vertices"))?),
+                    (*my_vertices.keys().iter().nth(0).unwrap(),
+                    *my_vertices.keys().iter().nth(1).unwrap(),
+                    *my_vertices.keys().iter().nth(2).unwrap()),
                     (*v,)
                 )
             } else if let Some(my) = my_two { // My edge
@@ -213,62 +213,15 @@ impl GJKState {
                         )
                     },
                     None => {
-                        println!("Non-standard face-face collision: {:?},  {:?}", my_vertices, o_vertices);
-                        let mut my_others = (None, None);
-                        for v in &vertex_array {
-                            if v.1 != *my {
-                                if my_others.0.is_some() {
-                                    my_others.1 = Some(v.1);
-                                } else {
-                                    my_others.0 = Some(v.1);
-                                }
-                            }
-                        }
-                        CollisionType::FaceFace(
-                            (*my,
-                            my_others.0.unwrap(),
-                            my_others.1.unwrap()),
-                            (vertex_array[0].2,
-                            vertex_array[1].2,
-                            vertex_array[2].2)
-                        )
-                    },
-                }
-            } else if let Some(o) = o_two { // O edge
-                // both edges covered
-                println!("Non-standard face-face collision: {:?}, {:?}", my_vertices, o_vertices);
-                let mut o_others = (None, None);
-                for v in &vertex_array {
-                    if v.2 != *o {
-                        if o_others.0.is_some() {
-                            o_others.1 = Some(v.2);
-                        } else {
-                            o_others.0 = Some(v.2);
-                        }
+                        CollisionType::Other
                     }
                 }
-                CollisionType::FaceFace(
-                    (vertex_array[0].1,
-                    vertex_array[1].1,
-                    vertex_array[2].1),
-                    (*o,
-                    o_others.0.unwrap(),
-                    o_others.1.unwrap()),
-                )
             } else {
-                println!("Non-standard face-face collision: {:?}, {:?}", my_vertices, o_vertices);
-                CollisionType::FaceFace(
-                    (vertex_array[0].1,
-                    vertex_array[1].1,
-                    vertex_array[2].1),
-                    (vertex_array[0].2,
-                    vertex_array[1].2,
-                    vertex_array[2].2)
-                )
+                CollisionType::Other
             }
         } else {
             unreachable!();
-        })
+        }
     }
 }
 
