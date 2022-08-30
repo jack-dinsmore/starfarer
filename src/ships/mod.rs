@@ -208,10 +208,10 @@ impl Ship {
             - Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::Right) as u32) as f32)
             + Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::RShift) as u32) as f32)
             - Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::RAlt) as u32) as f32);
-        if ship_force.magnitude() > 0.0 {
+        if ship_force.magnitude() > 0.1 {
             ship_force *= delta_time * 40_000.0 / ship_force.magnitude();
+            self.tasks.push(PhysicsTask::AddLocalImpulse(self.object, ship_force.cast().unwrap()));
         }
-        self.tasks.push(PhysicsTask::AddLocalImpulse(self.object, ship_force.cast().unwrap()));
         let mut ship_torque = 
               Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::W) as u32) as f32)
             - Vector3::unit_y() * ((key_tracker.get_state(VirtualKeyCode::S) as u32) as f32)
@@ -219,10 +219,10 @@ impl Ship {
             - Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::D) as u32) as f32)
             - Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::Q) as u32) as f32)
             + Vector3::unit_x() * ((key_tracker.get_state(VirtualKeyCode::E) as u32) as f32);
-        if ship_torque.magnitude() > 0.0 {
+        if ship_torque.magnitude() > 0.1 {
             ship_torque *= delta_time * 200_000.0 / ship_torque.magnitude();
+            self.tasks.push(PhysicsTask::AddLocalImpulseTorque(self.object, ship_torque.cast().unwrap()));
         }
-        self.tasks.push(PhysicsTask::AddLocalImpulseTorque(self.object, ship_torque.cast().unwrap()));
     }
 
     pub fn poll_tasks(&mut self, tasks: &mut Vec<PhysicsTask>) {

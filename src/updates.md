@@ -105,6 +105,7 @@ Terrain collision
 Collisions put in model file
 
 ## To do:
+- Binary search until collisions are edge-edge or vertex-face?
 - Atmosphere
 - Models can be replaced instead of just destroyed and remade
 - Clean up collision code
