@@ -1,15 +1,9 @@
 use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Matrix, Zero, InnerSpace, SquareMatrix, Rotation};
 
 use crate::shader::builtin;
-use super::{Updater, Collider, collider::{GJKState, CollisionType}};
+use super::{Updater, Collider, collider::{GJKState, CollisionData}};
 
 const COLLIDE_ACCEPTANCE: f64 = 0.1; // Accept collision info when it is accurate to this fraction of delta t
-
-enum CollisionData {
-    NoCollision,
-    Collision,
-    Tight(Vector3<f64>, Vector3<f64>),
-}
 
 pub struct RigidBody {
     pub pos: Vector3<f64>,
@@ -166,8 +160,7 @@ impl RigidBody {
             let mid = (high + low) / 2.0;
             match self.eval_collision(o, delta_time * mid) {
                 CollisionData::NoCollision => { low = mid; },// Increase frac
-                CollisionData::Collision => { high = mid; },// Decrease frac
-                CollisionData::Tight(normal, center) => {
+                CollisionData::Collision(normal, center) => {
                     if high - low < COLLIDE_ACCEPTANCE {
                         return Some((mid * delta_time, normal, center)); // Accept collision
                     } else {
@@ -210,7 +203,7 @@ impl RigidBody {
                     dir -= shift;
                 }
                 let mut state = GJKState::new((-dir, my_pos, o_pos));
-                let collision = loop {
+                loop {
                     dir = dir.normalize();
                     let my_pos = my_c.support(my_inv_orientation * dir);
                     let o_pos = o_c.support(o_inv_orientation * -dir);
@@ -220,48 +213,16 @@ impl RigidBody {
                     }
 
                     if new_vec.dot(dir) < 0.0 {
-                        break CollisionData::NoCollision;
+                        break;
                     }
                     state.push((new_vec, my_pos, o_pos));
                     if match state.contains_origin(&mut dir) {
-                        Err(_) => break CollisionData::NoCollision,
+                        Err(_) => break,
                         Ok(b) => b
                     } {
-                        // Process collision
-                        let (p1, p2, center, mut normal) = match state.get_collision_type() {
-                            CollisionType::FaceVertex((v0, v1, v2), (o0,)) => {
-                                let v0 = my_orientation * v0 + my_c_offset;
-                                let v1 = my_orientation * v1 + my_c_offset;
-                                let v2 = my_orientation * v2 + my_c_offset;
-                                let o0 = o_orientation * o0 + my_c_offset - o_c_offset + o_rb_pos - my_rb_pos;
-                                (v0, o0, o0, (v1 - v0).cross(v2 - v0))
-                            },
-                            CollisionType::VertexFace((v0,), (o0, o1, o2)) => {
-                                let v0 = my_orientation * v0 + my_c_offset;
-                                let o0 = o_orientation * o0 + my_c_offset - o_c_offset + o_rb_pos - my_rb_pos;
-                                let o1 = o_orientation * o1 + my_c_offset - o_c_offset + o_rb_pos - my_rb_pos;
-                                let o2 = o_orientation * o2 + my_c_offset - o_c_offset + o_rb_pos - my_rb_pos;
-                                (v0, o0, v0, (o1 - o0).cross(o2 - o0))
-                            },
-                            CollisionType::EdgeEdge((v0, v1), (o0, o1)) => {
-                                let v0 = my_orientation * v0 + my_c_offset;
-                                let v1 = my_orientation * v1 + my_c_offset;
-                                let o0 = o_orientation * o0 + my_c_offset - o_c_offset + o_rb_pos - my_rb_pos;
-                                let o1 = o_orientation * o1 + my_c_offset - o_c_offset + o_rb_pos - my_rb_pos;
-                                (v0, o0, (v0 + o0 + v1 + o1) / 4.0, (v1 - v0).cross(o1 - o0))
-                            },
-                            CollisionType::Other => {
-                                break CollisionData::Collision;
-                            },
-                        };
-
-                        normal *= normal.dot(p2 - p1) / normal.magnitude2();
-                        break CollisionData::Tight(normal, center);
+                        return state.get_collision_data(my_c_offset, my_c_offset - o_c_offset + o_rb_pos - my_rb_pos,
+                            my_orientation, o_orientation);
                     }
-                };
-                match collision {
-                    CollisionData::Collision | CollisionData::Tight(..) => return collision,
-                    _ => (),
                 }
             }
         }

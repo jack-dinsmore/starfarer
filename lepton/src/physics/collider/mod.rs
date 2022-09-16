@@ -1,11 +1,14 @@
 // GKJ algorithm: http://realtimecollisiondetection.net/pubs/SIGGRAPH04_Ericson_GJK_notes.pdf
+mod primitives;
 
-use cgmath::{Vector3, InnerSpace, Zero};
+use primitives::*;
+pub use primitives::CollisionData;
+
+use cgmath::{Vector3, Quaternion, InnerSpace, Zero};
 use anyhow::{Result, anyhow};
 
 const EPSILON: f64 = 1e-10;
 const MAX_ITERATIONS: u32 = 20;
-type Vertex = (Vector3<f64>, Vector3<f64>, Vector3<f64>); // ?, my vertex, o vertex
 
 pub enum Collider {
     Cube{length: f64},
@@ -139,299 +142,24 @@ impl GJKState {
         Ok(false)
     }
 
-    pub fn get_collision_type(&mut self) -> CollisionType {
+    pub fn get_collision_data(&mut self, my_offset: Vector3<f64>, o_offset: Vector3<f64>,
+        my_orientation: Quaternion<f64>, o_orientation: Quaternion<f64>) -> CollisionData {
+
         if let Simplex::Tetrahedron(a, b, c, d) = self.simplex {
-            let mut my_vertices = VertexCounter::new();
-            let mut o_vertices = VertexCounter::new();
-            let vertex_array = [a, b, c, d];
-            for v in &vertex_array {
-                my_vertices.add(v.1);
-                o_vertices.add(v.2);
-            }
+            let my_simplex = VertexCounter::reduce(
+                my_orientation * a.1 + my_offset,
+                my_orientation * b.1 + my_offset,
+                my_orientation * c.1 + my_offset,
+                my_orientation * d.1 + my_offset);
+            let o_simplex = VertexCounter::reduce(
+                o_orientation * a.2 + o_offset,
+                o_orientation * b.2 + o_offset,
+                o_orientation * c.2 + o_offset,
+                o_orientation * d.2 + o_offset);
 
-            let mut my_three = None;
-            let mut my_two = None;
-            let mut o_three = None;
-            let mut o_two = None;
-            for (k, v) in my_vertices.iter() {
-                if *v == 3 {
-                    my_three = Some(k);
-                }
-                if *v == 2 {
-                    my_two = Some(k);
-                }
-            }
-            for (k, v) in o_vertices.iter() {
-                if *v == 3 {
-                    o_three = Some(k);
-                }
-                if *v == 2 {
-                    o_two = Some(k);
-                }
-            }
-
-            if let Some(v) = my_three { // My vertex
-                CollisionType::VertexFace(
-                    (*v,), 
-                    (*o_vertices.keys().iter().nth(0).unwrap(),
-                    *o_vertices.keys().iter().nth(1).unwrap(),
-                    *o_vertices.keys().iter().nth(2).unwrap())
-                )
-            } else if let Some(v) = o_three { // Other vertex
-                CollisionType::FaceVertex(
-                    (*my_vertices.keys().iter().nth(0).unwrap(),
-                    *my_vertices.keys().iter().nth(1).unwrap(),
-                    *my_vertices.keys().iter().nth(2).unwrap()),
-                    (*v,)
-                )
-            } else if let Some(my) = my_two { // My edge
-                match o_two {
-                    Some(o) => {
-                        let mut my_verts = (None, None);
-                        let mut o_verts = (None, None);
-                        for v in &vertex_array {
-                            if v.1 == *my {
-                                if o_verts.0.is_some() {
-                                    o_verts.1 = Some(v.2)
-                                } else {
-                                    o_verts.0 = Some(v.2)
-                                }
-                            }
-                            if v.2 == *o {
-                                if my_verts.0.is_some() {
-                                    my_verts.1 = Some(v.1)
-                                } else {
-                                    my_verts.0 = Some(v.1)
-                                }
-                            }
-                        }
-                        CollisionType::EdgeEdge(
-                            (my_verts.0.unwrap(), 
-                            my_verts.1.unwrap()), 
-                            (o_verts.0.unwrap(), 
-                            o_verts.1.unwrap())
-                        )
-                    },
-                    None => {
-                        CollisionType::Other
-                    }
-                }
-            } else {
-                CollisionType::Other
-            }
+            VertexCounter::collide_data(my_simplex, o_simplex)
         } else {
-            unreachable!();
+            unreachable!()
         }
-    }
-}
-
-enum Simplex {
-    Point(Vertex),
-    Line(Vertex, Vertex),
-    Triangle(Vertex, Vertex, Vertex),
-    Tetrahedron(Vertex, Vertex, Vertex, Vertex),
-}
-
-impl Simplex {
-    pub fn push(&mut self, v: Vertex) {
-        *self = match self {
-            Simplex::Point(i) => Simplex::Line(*i, v),
-            Simplex::Line(i, j) => Simplex::Triangle(*i, *j, v),
-            Simplex::Triangle(i, j, k) => Simplex::Tetrahedron(*i, *j, *k, v),
-            Simplex::Tetrahedron(..) => unreachable!(),
-        };
-    }
-
-    /// Get the closest point to the origin and restrict to the simplex that contains it. None is
-    /// returned if the closest point containing the origin is inside the simplex.
-    pub fn downgrade(&mut self) -> Option<Vector3<f64>> {
-        match self {
-            Self::Tetrahedron(a, b, c, d) => {
-                // Vertices
-                let (v01, v02, v03) = (a.0.dot(b.0 - a.0) >= 0.0, a.0.dot(c.0 - a.0) >= 0.0, a.0.dot(d.0 - a.0) >= 0.0);
-                let (v10, v12, v13) = (b.0.dot(a.0 - b.0) >= 0.0, b.0.dot(c.0 - b.0) >= 0.0, b.0.dot(d.0 - b.0) >= 0.0);
-                let (v20, v21, v23) = (c.0.dot(a.0 - c.0) >= 0.0, c.0.dot(b.0 - c.0) >= 0.0, c.0.dot(d.0 - c.0) >= 0.0);
-                let (v30, v31, v32) = (d.0.dot(a.0 - d.0) >= 0.0, d.0.dot(b.0 - d.0) >= 0.0, d.0.dot(c.0 - d.0) >= 0.0);
-                if v01 && v02 && v03 {
-                    let out = a.0;
-                    *self = Self::Point(*a);
-                    Some(out)
-                } else if v10 && v12 && v13 {
-                    let out = b.0;
-                    *self = Self::Point(*b);
-                    Some(out)
-                } else if v20 && v21 && v23 {
-                    let out = c.0;
-                    *self = Self::Point(*c);
-                    Some(out)
-                } else if v30 && v31 && v32 {
-                    let out = d.0;
-                    *self = Self::Point(*d);
-                    Some(out)
-                } else {
-                    // Lines
-                    let n012 = (b.0 - a.0).cross(c.0 - a.0);
-                    let n013 = (b.0 - a.0).cross(d.0 - a.0);
-                    let n023 = (c.0 - a.0).cross(d.0 - a.0);
-                    
-                    let n102 = (a.0 - b.0).cross(c.0 - b.0);
-                    let n103 = (a.0 - b.0).cross(d.0 - b.0);
-                    let n123 = (c.0 - b.0).cross(d.0 - b.0);
-
-                    let n203 = (a.0 - c.0).cross(d.0 - c.0);
-                    let n213 = (b.0 - c.0).cross(d.0 - c.0);
-                    if !v01 && !v10 && a.0.dot((b.0 - a.0).cross(n012)) <= 0.0 && a.0.dot((b.0 - a.0).cross(n013)) <= 0.0 {
-                        let line = a.0 - b.0;
-                        let out = a.0 - line * line.dot(a.0) / line.magnitude2();
-                        *self = Self::Line(*a, *b);
-                        Some(out)
-                    } else if !v02 && !v20 && a.0.dot((c.0 - a.0).cross(-n012)) <= 0.0 && a.0.dot((c.0 - a.0).cross(n023)) <= 0.0 {
-                        let line = a.0 - c.0;
-                        let out = a.0 - line * line.dot(a.0) / line.magnitude2();
-                        *self = Self::Line(*a, *c);
-                        Some(out)
-                    } else if !v03 && !v30 && a.0.dot((d.0 - a.0).cross(-n013)) <= 0.0 && a.0.dot((d.0 - a.0).cross(-n023)) <= 0.0 {
-                        let line = a.0 - d.0;
-                        let out = a.0 - line * line.dot(a.0) / line.magnitude2();
-                        *self = Self::Line(*a, *d);
-                        Some(out)
-                    } else if !v12 && !v21 && b.0.dot((c.0 - b.0).cross(-n102)) <= 0.0 && b.0.dot((c.0 - b.0).cross(n123)) <= 0.0 {
-                        let line = b.0 - c.0;
-                        let out = b.0 - line * line.dot(b.0) / line.magnitude2();
-                        *self = Self::Line(*b, *c);
-                        Some(out)
-                    } else if !v13 && !v31 && b.0.dot((d.0 - b.0).cross(-n103)) <= 0.0 && b.0.dot((d.0 - b.0).cross(-n123)) <= 0.0 {
-                        let line = b.0 - d.0;
-                        let out = b.0 - line * line.dot(b.0) / line.magnitude2();
-                        *self = Self::Line(*b, *d);
-                        Some(out)
-                    } else if !v23 && !v32 && c.0.dot((d.0 - c.0).cross(-n203)) <= 0.0 && c.0.dot((d.0 - c.0).cross(-n213)) <= 0.0 {
-                        let line = c.0 - d.0;
-                        let out = c.0 - line * line.dot(c.0) / line.magnitude2();
-                        *self = Self::Line(*c, *d);
-                        Some(out)
-                    } else {
-                        // Faces
-                        if n123.dot(b.0) * n123.dot(b.0 - a.0) < 0.0 {
-                            let out = n123 * b.0.dot(n123) / n123.magnitude2();
-                            *self = Self::Triangle(*b, *c, *d);
-                            Some(out)
-                        } else if n023.dot(a.0) * n023.dot(a.0 - b.0) < 0.0 {
-                            let out = n023 * a.0.dot(n023) / n023.magnitude2();
-                            *self = Self::Triangle(*a, *c, *d);
-                            Some(out)
-                        } else if n013.dot(a.0) * n013.dot(a.0 - c.0) < 0.0 {
-                            let out = n013 * a.0.dot(n013) / n013.magnitude2();
-                            *self = Self::Triangle(*a, *b, *d);
-                            Some(out)
-                        } else if n012.dot(a.0) * n012.dot(a.0 - d.0) < 0.0 {
-                            let out = n012 * a.0.dot(n012) / n012.magnitude2();
-                            *self = Self::Triangle(*a, *b, *c);
-                            Some(out)
-                        } else {
-                            // Volume
-                            None
-                        }
-                    }
-                }
-            },
-            Self::Triangle(a, b, c) => {
-                // Vertices
-                let (v01, v02) = (a.0.dot(b.0 - a.0) >= 0.0, a.0.dot(c.0 - a.0) >= 0.0);
-                let (v10, v12) = (b.0.dot(a.0 - b.0) >= 0.0, b.0.dot(c.0 - b.0) >= 0.0);
-                let (v20, v21) = (c.0.dot(a.0 - c.0) >= 0.0, c.0.dot(b.0 - c.0) >= 0.0);
-                if v01 && v02 {
-                    let out = a.0;
-                    *self = Self::Point(*a);
-                    Some(out)
-                } else if v10 && v12 {
-                    let out = b.0;
-                    *self = Self::Point(*b);
-                    Some(out)
-                } else if v20 && v21 {
-                    let out = c.0;
-                    *self = Self::Point(*c);
-                    Some(out)
-                } else {
-                    // Lines
-                    let n012 = (b.0 - a.0).cross(c.0 - a.0);
-                    if !v01 && !v10 && a.0.dot((b.0 - a.0).cross(n012)) <= 0.0 {
-                        let line = a.0 - b.0;
-                        let out = a.0 - line * line.dot(a.0) / line.magnitude2();
-                        *self = Self::Line(*a, *b);
-                        Some(out)
-                    } else if !v02 && !v20 && a.0.dot((c.0 - a.0).cross(-n012)) <= 0.0 {
-                        let line = a.0 - c.0;
-                        let out = a.0 - line * line.dot(a.0) / line.magnitude2();
-                        *self = Self::Line(*a, *c);
-                        Some(out)
-                    } else if !v12 && !v21 && b.0.dot((c.0 - b.0).cross(n012)) <= 0.0 {
-                        let line = b.0 - c.0;
-                        let out = b.0 - line * line.dot(b.0) / line.magnitude2();
-                        *self = Self::Line(*b, *c);
-                        Some(out)
-                    } else {
-                        // Faces
-                        let out = n012 * a.0.dot(n012) / n012.magnitude2();
-                        Some(out)
-                    }
-                }
-            },
-            Self::Line(a, b) => {
-                let line = b.0 - a.0;
-                let a_sign = line.dot(a.0);
-                let b_sign = line.dot(b.0);
-                if (a_sign > 0.0) ^ (b_sign > 0.0) {
-                    // Line
-                    Some(a.0 - line * a_sign / line.magnitude2())
-                } else {
-                    // Points
-                    if a_sign > 0.0 {
-                        let out = a.0;
-                        *self = Self::Point(*a);
-                        Some(out)
-                    } else {
-                        let out = b.0;
-                        *self = Self::Point(*b);
-                        Some(out)
-                    }
-                }
-            }
-            Self::Point(a) => {
-                Some(a.0)
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-struct VertexCounter {
-    counts: Vec<(Vector3<f64>, usize)>,
-}
-
-impl VertexCounter {
-    fn new() -> Self {
-        Self { counts: Vec::new() }
-    }
-
-    fn add(&mut self, v: Vector3<f64>) {
-        let mut added = false;
-        for (a, i) in &mut self.counts {
-            if *a == v {
-                *i += 1;
-                added = true;
-            }
-        }
-        if !added {
-            self.counts.push((v, 1))
-        }
-    }
-
-    fn iter(&self) -> std::slice::Iter<(Vector3<f64>, usize)> {
-        self.counts.iter()
-    }
-
-    fn keys(&self) -> Vec<Vector3<f64>> {
-        self.counts.iter().map(|(k, _)| {*k}).collect()
     }
 }

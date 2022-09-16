@@ -104,11 +104,14 @@ Export with Y forward, Z up.
 Terrain collision
 Collisions put in model file
 
+## Sept 15
+
+Fixed the GJK algorithm so that it computes the collision result without assuming that the answer is face-vertex or edge-edge
+
 ## To do:
-- Binary search until collisions are edge-edge or vertex-face?
 - Atmosphere
 - Models can be replaced instead of just destroyed and remade
-- Clean up collision code
+- Make binary search terminal dependent on object velocity
 - Docking with the other ship
 - Make sure that double-loaded ships share textures
 - Make the number of descriptor sets for models dynamically set (also, should they be allocated per model or per shader?)
