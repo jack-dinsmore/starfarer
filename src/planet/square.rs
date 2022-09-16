@@ -1,6 +1,7 @@
 use cgmath::{Vector3, InnerSpace};
 use lepton::prelude::*;
 use super::LoadDegree;
+use super::primitives::*;
 
 const ADJACENCIES: [[u8; 4]; 6] = [
     // Top, right, bottom, left
@@ -61,14 +62,7 @@ impl MapID {
         }
     }
 }
-#[derive(Clone, Copy, Debug)]
-pub struct PlanetSettings {
-    pub face_subdivision: u32,
-    pub map_subdivision: u32,
-    pub height_subdivision: u32,
-    pub height: f64,
-    pub radius: f64,
-}
+
 
 pub struct Square<F: Fn(Vector3<f64>) -> f64> {
     id: MapID,
@@ -125,19 +119,20 @@ impl<F: Fn(Vector3<f64>) -> f64> Square<F> {
                         top_points[((row_index + 1) * (map_subdivision + 1) + col_index) as usize],
                     ];
 
-                    super::triangulation::assess_cube(corner_poses, corner_vals, &mut vertices);
+                    super::triangulation::assess_cube(corner_poses, corner_vals, &mut vertices, &self.settings.color_scheme);
                 }
             }
             std::mem::swap(&mut bottom_points, &mut top_points);
             top_points.clear();
         }
+
         let indices = (0..vertices.len() as u32).collect::<Vec<_>>();
         (vertices, indices)
     }
 
     pub fn load_from_old(&self, _model: &Model, _old_degree: u8) -> (Vec<vertex::VertexLP>, Vec<u32>) {
         self.load_new()
-        //// Implement this
+        //// Implement this unimplemented!()
     }
 }
 

@@ -2,6 +2,7 @@
 
 mod triangulation;
 mod square;
+mod primitives;
 
 use rustc_hash::FxHashMap;
 use lepton::prelude::*;
@@ -10,12 +11,14 @@ use noise::{OpenSimplex, Seedable, NoiseFn};
 use square::*;
 use super::threadpool::ThreadPool;
 use std::sync::mpsc::Receiver;
+use primitives::*;
 
 const NUM_OCTAVES: u8 = 7;
 const UPDATE_PERIOD: u8 = 8;
 const AMPLITUDE: [f64; NUM_OCTAVES as usize] = [
     2.0, 1.5/2.0, 1.5/4.0, 1.0/8.0, 1.0/16.0, 1.0/32.0, 1.0/64.0
 ];
+const SCALE_TO_HEIGHT_RATIO: f64 = 1.2;
 
 #[derive(Copy, Clone)]
 pub enum LoadDegree {
@@ -53,6 +56,8 @@ impl Planet {
         let face_subdivision = 4;
         let map_subdivision = 64;
         let request_height = 0.2;
+        let spikiness = 3;
+        let color_scheme = ColorScheme::make_double([0.8, 0.7, 0.3], [0.4, 0.3, 0.4], 0.5, 1000.0, 20.0);
 
         // Calculate height
         let triangle_length = std::f64::consts::PI / 2.0 / face_subdivision as f64 / map_subdivision as f64;
@@ -83,6 +88,8 @@ impl Planet {
                 height_subdivision,
                 height,
                 radius,
+                color_scheme,
+                spikiness,
             },
             load_configs,
             update_frame: 0,
@@ -139,6 +146,7 @@ impl Planet {
         }
         self.last_state = Some((my_id, my_config_index));
 
+
         
         // Load new maps
         for (index, (id, model)) in self.models.iter_mut().enumerate() {
@@ -149,9 +157,10 @@ impl Planet {
                     let settings = self.settings;
                     let noise_map = self.noise_map;
                     let id_val = *id;
+                    let scale = self.settings.height * SCALE_TO_HEIGHT_RATIO;
                     self.model_switches.push((index, LoadDegree::High, threadpool.execute(move || {
                         Square::new(id_val, LoadDegree::High, settings, |pos| {
-                            Self::value_fn(pos, noise_map)
+                            Self::value_fn(pos, noise_map, settings.spikiness, scale)
                         }).load_new()
                     })));
                 }
@@ -161,9 +170,10 @@ impl Planet {
                     let settings = self.settings;
                     let noise_map = self.noise_map;
                     let id_val = *id;
+                    let scale = self.settings.height * SCALE_TO_HEIGHT_RATIO;
                     self.model_switches.push((index, LoadDegree::Low, threadpool.execute(move || {
                         Square::new(id_val, LoadDegree::Low, settings, |pos| {
-                            Self::value_fn(pos, noise_map)
+                            Self::value_fn(pos, noise_map, settings.spikiness, scale)
                         }).load_new()
                     })));
                 }
@@ -188,6 +198,8 @@ impl Planet {
         
         let noise_map = self.noise_map.clone();
         let radius = self.settings.radius;
+        let spikiness = self.settings.spikiness;
+        let scale = self.settings.height * SCALE_TO_HEIGHT_RATIO;
 
         map.insert(self.object,
             RigidBody::new(
@@ -197,7 +209,7 @@ impl Planet {
             .gravitate(1_000_000.0)
             .collide(vec![
                 Collider::planet(Box::new(move |n_pos| {
-                    (Self::height_fn(n_pos, noise_map) + 1.0) * radius
+                    (Self::height_fn(n_pos, noise_map, spikiness, scale) + 1.0) * radius
                 }), (1.0 + self.settings.height) * self.settings.radius)
             ], 1.0)
         );
@@ -205,28 +217,19 @@ impl Planet {
 }
 
 impl Planet {
-    fn height_fn(n_pos: Vector3<f64>, noise_map: OpenSimplex) -> f64 {
+    fn height_fn(n_pos: Vector3<f64>, noise_map: OpenSimplex, power: i32, scale: f64) -> f64 {
         // Require n_pos to be normalized
-        /*const TERRACES: f64 = 8.0;
-        let mut val = 0.0;
-        for oct in 0..NUM_OCTAVES {
-            let freq = (1 << oct) as f64;
-            val += (0.5 + 5.0 * noise_map.get([pos[0] * freq, pos[1] * freq, pos[2] * freq]) * AMPLITUDE[oct as usize]).clamp(0.0, 1.0);
-        }
-        val /= NUM_OCTAVES as f64;
-        //0.5 * (((val.powi(3)-0.15) * TERRACES).round() / TERRACES) + pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2] - 1.0
-        0.6 * (val.powi(3)-0.15) + pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2] - 1.0*/
         let mut val = 0.0;
         for oct in 0..NUM_OCTAVES {
             let freq = (1 << oct) as f64;
             val += (0.5 + 5.0 * noise_map.get([n_pos.x * freq, n_pos.y * freq, n_pos.z * freq]) * AMPLITUDE[oct as usize]).clamp(0.0, 1.0);
         }
-        0.6 * ((val / NUM_OCTAVES as f64).powi(3)-0.15)
+        scale * ((val / NUM_OCTAVES as f64).powi(power)-1.0 / (power as f64+ 1.0))
     }
-    fn value_fn(pos: Vector3<f64>, noise_map: OpenSimplex) -> f64 {
+    fn value_fn(pos: Vector3<f64>, noise_map: OpenSimplex, power: i32, scale: f64) -> f64 {
         let mag = pos.magnitude();
         let n_pos = pos / mag;
-        return Self::height_fn(n_pos, noise_map) + (mag - 1.0)
+        return Self::height_fn(n_pos, noise_map, power, scale) + (mag - 1.0)
     }
 }
 

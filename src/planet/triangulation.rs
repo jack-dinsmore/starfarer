@@ -1,5 +1,6 @@
 use cgmath::{Vector3, Zero, InnerSpace};
 use lepton::prelude::*;
+use super::primitives::*;
 
 const EDGES: [u32; 256] = [
     0x0  , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
@@ -299,7 +300,7 @@ fn interp(low_pos: Vector3<f64>, high_pos: Vector3<f64>, low: f64, high: f64) ->
     low_pos * (1.0 - frac) + high_pos * (frac)
 }
 
-pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<vertex::VertexLP>) {
+pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<vertex::VertexLP>, color_scheme: &ColorScheme) {
     let cube_index = 
         ((vals[0] < 0.0) as usize) << 0 | 
         ((vals[1] < 0.0) as usize) << 1 | 
@@ -354,27 +355,14 @@ pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<
  
     for index_index in (0..16).step_by(3) {
         if INDICES[cube_index][index_index] == -1 {break;}
-        let mut p0 = cube_verts[INDICES[cube_index][index_index] as usize];
-        let mut p1 = cube_verts[INDICES[cube_index][index_index + 1] as usize];
-        let mut p2 = cube_verts[INDICES[cube_index][index_index + 2] as usize];
+        let p0 = cube_verts[INDICES[cube_index][index_index] as usize];
+        let p1 = cube_verts[INDICES[cube_index][index_index + 1] as usize];
+        let p2 = cube_verts[INDICES[cube_index][index_index + 2] as usize];
         let avg_height = (p0 + p1 + p2).magnitude() / 3.0;
-        let color = if avg_height > 1020.0 {
-            [1.0, 0.8, 0.6, 1.0]
-        } else if avg_height > 980.0 {
-            [0.3, 1.0, 0.1, 1.0]
-            
-        } else {
-            if p0.magnitude2() < 980.0 * 980.0 {
-                p0 = p0.normalize() * 980.0
-            }
-            if p1.magnitude2() < 980.0 * 980.0 {
-                p1 = p1.normalize() * 980.0
-            }
-            if p2.magnitude2() < 980.0 * 980.0 {
-                p2 = p2.normalize() * 980.0
-            }
-            [0.0, 0.0, 1.0, 1.0]
-        };
+
+        let color = color_scheme.get_color(avg_height);
+        let color = [color[0], color[1], color[2], 1.0];
+
         let info = [1.0, 1.0, 1.0];
         let normal = (p1 - p0).cross(p2 - p0).normalize();
         let normal = [normal.x  as f32, normal.y as f32, normal.z as f32];

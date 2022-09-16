@@ -33,8 +33,12 @@ void main() {
     for (uint index = 0; index < lights_ubo.num_lights; index++) {
         const vec3 light_source = normalize(lights_ubo.light_pos[index].xyz - worldCoord);
         const vec3 reflection = normalize(2 * dot(light_source, normal) * normal - light_source);
+        const float normal_dot = dot(light_source, normal);
+        if (normal_dot < 0.0) {
+            continue;
+        }
         illumination += lights_ubo.light_features[index].w * (
-            max(dot(light_source, normal), 0) + 
+            normal_dot + 
             fragInfo.x * pow(max(dot(reflection, camera_pos), 0), fragInfo.y));
     }
 

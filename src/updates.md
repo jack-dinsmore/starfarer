@@ -110,6 +110,7 @@ Fixed the GJK algorithm so that it computes the collision result without assumin
 
 ## To do:
 - Atmosphere
+- Fix planetary collision
 - Models can be replaced instead of just destroyed and remade
 - Make binary search terminal dependent on object velocity
 - Docking with the other ship
