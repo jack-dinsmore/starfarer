@@ -161,7 +161,7 @@ impl RigidBody {
         loop {
             if high - low < 0.001 {
                 println!("Binary search got too tight.");
-                return None
+                // return None;
             }
             let mid = (high + low) / 2.0;
             match self.eval_collision(o, delta_time * mid) {

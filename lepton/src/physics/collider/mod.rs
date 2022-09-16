@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 
 const EPSILON: f64 = 1e-10;
 const MAX_ITERATIONS: u32 = 20;
-type Vertex = (Vector3<f64>, Vector3<f64>, Vector3<f64>);
+type Vertex = (Vector3<f64>, Vector3<f64>, Vector3<f64>); // ?, my vertex, o vertex
 
 pub enum Collider {
     Cube{length: f64},
