@@ -22,7 +22,7 @@ pub struct RigidBody {
     pub colliders: Vec<Collider>,
     pub elasticity: f64,
     pub model_offset: Matrix4<f32>,
-    pub collide_normal: Option<(f32, Vector3<f64>)>, // Contains the time left in the collision frame and the normal of the collision
+    pub collide_data: Option<(f32, Vector3<f64>, Vector3<f64>)>, // delta_t so far, pos, normal
 }
 
 impl RigidBody {
@@ -41,7 +41,7 @@ impl RigidBody {
             colliders: Vec::new(),
             elasticity: 1.0,
             model_offset: Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.0)),
-            collide_normal: None,
+            collide_data: None,
         }
     }
 
@@ -60,7 +60,7 @@ impl RigidBody {
             colliders: Vec::new(),
             elasticity: 1.0,
             model_offset: Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.0)),
-            collide_normal: None,
+            collide_data: None,
         }
     }
 
@@ -114,10 +114,14 @@ impl RigidBody {
     }
 
     pub(crate) fn update(&mut self, delta_time: f64) {
-        let dt = if let Some((t, _)) = self.collide_normal {t as f64} else {delta_time};
+        let dt = if let Some((t, _, _)) = self.collide_data {t as f64} else {delta_time};
         match self.updater {
             Updater::Fixed => (),
             Updater::Free => {
+                if let Some((_, r, n)) = self.collide_data {
+                    let impulse_into_ground = self.impulse - r.cross(self.moi_inv() * self.torque_impulse);
+                    self.impulse += n * n.dot(impulse_into_ground);
+                }
                 self.vel += self.impulse / self.mass;
                 self.pos += self.vel * dt;
                 self.ang_vel += self.moi_inv() * (self.torque_impulse - self.ang_vel.cross(self.moi() * self.ang_vel) * delta_time);
@@ -125,7 +129,7 @@ impl RigidBody {
                 self.orientation = self.orientation.normalize();
                 self.impulse = Vector3::zero();
                 self.torque_impulse = Vector3::zero();
-                self.collide_normal = None;
+                self.collide_data = None;
             },
             _ => unimplemented!()
         }

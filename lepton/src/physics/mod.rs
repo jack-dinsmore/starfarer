@@ -15,6 +15,7 @@ pub type Object = u16;
 
 pub(self) const LIMIT_IMPULSE: bool = false;
 const MAX_DELTA_V: f64 = 100.0;
+const SCALE_ELASTICITY_VEL: f64 = 20.0;
 
 
 pub struct ObjectManager {
@@ -111,7 +112,7 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                     let r1 = r;
                     let r2 = r - (rb_j.pos - rb_i.pos);
                     let rel_vel = rb_j.vel + rb_j.ang_vel.cross(r1) - rb_i.vel - rb_i.ang_vel.cross(r2);
-                    let elasticity = (rb_i.elasticity * rb_j.elasticity).sqrt();
+                    let elasticity = (rb_i.elasticity * rb_j.elasticity).sqrt() * (-rel_vel.magnitude() / SCALE_ELASTICITY_VEL).exp();
                     let normal = n.normalize();
                     let (minimum_mass, i_denom) = match rb_i.updater {
                         Updater::Fixed => (f64::INFINITY, 0.0),
@@ -134,11 +135,11 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                     // Apply impulse
                     rb_i.impulse -= impulse;
                     rb_i.torque_impulse -= torque_impulse;
-                    rb_i.collide_normal = Some((delta_time - t as f32, normal));
+                    rb_i.collide_data = Some((delta_time - t as f32, r2, normal));
 
                     rb_j.impulse += impulse;
                     rb_j.torque_impulse += torque_impulse;
-                    rb_j.collide_normal = Some((delta_time - t as f32, -normal));
+                    rb_j.collide_data = Some((delta_time - t as f32, r1, -normal));
                 }
             }
         }
@@ -151,43 +152,23 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                 match task {
                     PhysicsTask::AddGlobalForce(object, force) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
-                            if let Some((_, n)) = rb.collide_normal {
-                                if force.dot(n) < 0.0 {
-                                    continue;
-                                }
-                            }
                             rb.impulse += force * delta_time as f64;
                         }
                     },
                     PhysicsTask::AddGlobalImpulse(object, impulse) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
-                            if let Some((_, n)) = rb.collide_normal {
-                                if impulse.dot(n) < 0.0 {
-                                    continue;
-                                }
-                            }
                             rb.impulse += impulse;
                         }
                     },
                     PhysicsTask::AddLocalForce(object, force) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
                             let force = rb.orientation * force;
-                            if let Some((_, n)) = rb.collide_normal {
-                                if force.dot(n) < 0.0 {
-                                    continue;
-                                }
-                            }
                             rb.impulse += force * delta_time as f64;
                         }
                     },
                     PhysicsTask::AddLocalImpulse(object, impulse) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
                             let force = rb.orientation * impulse / delta_time as f64;
-                            if let Some((_, n)) = rb.collide_normal {
-                                if force.dot(n) < 0.0 {
-                                    continue;
-                                }
-                            }
                             rb.impulse += force * delta_time as f64;
                         }
                     },

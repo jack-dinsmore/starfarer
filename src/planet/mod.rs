@@ -211,7 +211,7 @@ impl Planet {
                 Collider::planet(Box::new(move |pos| {
                     Self::value_fn(pos / radius, noise_map, spikiness, scale) * radius
                 }), (1.0 + self.settings.height) * self.settings.radius)
-            ], 1.0)
+            ], 0.3)
         );
     }
 }

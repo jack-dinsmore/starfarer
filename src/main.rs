@@ -70,7 +70,7 @@ impl Starfarer {
             // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
             //     Vector3::new(2.0, -2.0, 0.001), Vector3::new(0.0, -38.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(30.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::zero()),
+                Vector3::new(30.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::new(1.0, 1.0, 0.0)),
         ];
         let player = object_manager.get_object();
         let sun = object_manager.get_object();
