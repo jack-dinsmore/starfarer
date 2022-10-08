@@ -4,7 +4,7 @@ mod primitives;
 use primitives::*;
 pub use primitives::CollisionData;
 
-use cgmath::{Vector3, Quaternion, InnerSpace, Zero};
+use cgmath::{Vector3, Quaternion, InnerSpace, Zero, Rotation};
 use anyhow::{Result, anyhow};
 
 const EPSILON: f64 = 1e-10;
@@ -17,12 +17,17 @@ pub enum Collider {
 }
 
 impl Collider {
+    /// Temporary cube collider initialization function
     pub fn cube(length: f64) -> Self {
         Collider::Cube{ length }
     }
+    
+    /// A planetary collider function. Pass in the value function and the length
     pub fn planet(func: Box<dyn 'static + Send + Sync + Fn(Vector3<f64>) -> f64>, length: f64) -> Self {
         Collider::Radial { func, length }
     }
+
+    /// Polyhedral function, mostly for ships
     pub fn polyhedron(vertices: Vec<Vector3<f64>>) -> Self {
         let offset = vertices.iter().map(|v| v).sum::<Vector3<f64>>() / vertices.len() as f64;
         let vertices = vertices.into_iter().map(|v| v - offset).collect::<Vec<Vector3<f64>>>();
@@ -65,9 +70,6 @@ impl Collider {
                     }
                 }
             },
-            Collider::Radial{func, ..} => {
-                dir * func(dir)
-            },
             Collider::Polyhedron { vertices, .. } => {
                 //// Later, implement a binary tree?
                 let mut max_dot = 0.0;
@@ -80,7 +82,8 @@ impl Collider {
                     }
                 }
                 *max_v.unwrap()
-            }
+            },
+            _ => panic!("Collider not provided with a support function")
         }
     }
 
@@ -98,6 +101,83 @@ impl Collider {
             Collider::Radial{..} => Vector3::zero(),
             Collider::Polyhedron { offset, ..} => *offset,
         }
+    }
+
+    pub(super) fn gjk_collide(my_c: &Collider, o_c: &Collider,
+        my_rb_pos: Vector3<f64>, o_rb_pos: Vector3<f64>,
+        my_orientation: Quaternion<f64>, o_orientation: Quaternion<f64>,
+        shift: Vector3<f64>) -> Option<CollisionData> {
+
+        // Confirm the objects are within collision distance
+        let my_c_offset = my_orientation * my_c.offset();
+        let o_c_offset = o_orientation * o_c.offset();
+        let displacement = o_rb_pos - my_rb_pos - my_c_offset + o_c_offset;
+        if displacement.magnitude() > my_c.radius() + o_c.radius() {
+            return None;
+        }
+
+        // Initialization
+        let my_inv_orientation = my_orientation.invert();
+        let o_inv_orientation = o_orientation.invert();
+        let initial_axis = displacement.normalize();
+
+        let my_pos = my_c.support(my_inv_orientation * initial_axis);
+        let o_pos = o_c.support(o_inv_orientation * -initial_axis);
+        let mut dir = -(my_orientation * my_pos - (o_orientation * o_pos + displacement));
+        if shift.dot(initial_axis) > 0.0 {
+            dir -= shift;
+        }
+        let mut state = GJKState::new((-dir, my_pos, o_pos));
+        loop {
+            dir = dir.normalize();
+            let my_pos = my_c.support(my_inv_orientation * dir);
+            let o_pos = o_c.support(o_inv_orientation * -dir);
+            let mut new_vec = my_orientation * my_pos - (o_orientation * o_pos + displacement);
+            if shift.dot(dir) > 0.0 {
+                new_vec += shift;
+            }
+
+            if new_vec.dot(dir) < 0.0 {
+                break;
+            }
+            state.push((new_vec, my_pos, o_pos));
+            if match state.contains_origin(&mut dir) {
+                Err(_) => break,
+                Ok(b) => b
+            } {
+                return Some(state.get_collision_data(my_c_offset, my_c_offset - o_c_offset + o_rb_pos - my_rb_pos,
+                    my_orientation, o_orientation));
+            }
+        }
+        None
+    }
+
+    pub(super) fn planet_collide(planet: &Collider, c: &Collider,
+        planet_pos: Vector3<f64>, c_pos: Vector3<f64>,
+        planet_orientation: Quaternion<f64>, c_orientation: Quaternion<f64>,
+        shift: Vector3<f64>) -> Option<CollisionData> {
+            // Confirm the objects are within collision distance
+        let planet_offset = planet_orientation * planet.offset();
+        let c_offset = c_orientation * c.offset();
+        let displacement = c_pos - planet_pos - planet_offset + c_offset - shift;
+        if displacement.magnitude() > planet.radius() + c.radius() {
+            return None;
+        }
+
+        let lowermost_point = c_orientation * c.support(-c_orientation.invert() * displacement.normalize()) - displacement;
+        if let Self::Radial{ func, ..} = planet {
+            let value = func(lowermost_point);
+            if value < 0.0 {
+                // Collision
+                let lowermost_mag = lowermost_point.magnitude();
+                let normal = lowermost_point / lowermost_mag;
+                let point = lowermost_point * (1.0 + value / lowermost_mag);
+                return Some(CollisionData::Collision(point, normal));
+            }
+        } else {
+            unreachable!();
+        }
+        None
     }
 }
 

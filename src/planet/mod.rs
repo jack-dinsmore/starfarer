@@ -208,8 +208,8 @@ impl Planet {
             )
             .gravitate(1_000_000.0)
             .collide(vec![
-                Collider::planet(Box::new(move |n_pos| {
-                    (Self::height_fn(n_pos, noise_map, spikiness, scale) + 1.0) * radius
+                Collider::planet(Box::new(move |pos| {
+                    Self::value_fn(pos / radius, noise_map, spikiness, scale) * radius
                 }), (1.0 + self.settings.height) * self.settings.radius)
             ], 1.0)
         );
@@ -217,6 +217,7 @@ impl Planet {
 }
 
 impl Planet {
+    /// Returns the height in radial units of point n_pos above radius one.
     fn height_fn(n_pos: Vector3<f64>, noise_map: OpenSimplex, power: i32, scale: f64) -> f64 {
         // Require n_pos to be normalized
         let mut val = 0.0;
@@ -226,6 +227,8 @@ impl Planet {
         }
         scale * ((val / NUM_OCTAVES as f64).powi(power)-1.0 / (power as f64+ 1.0))
     }
+
+    /// Returns the value of a specific location, with zero being the surface
     fn value_fn(pos: Vector3<f64>, noise_map: OpenSimplex, power: i32, scale: f64) -> f64 {
         let mag = pos.magnitude();
         let n_pos = pos / mag;

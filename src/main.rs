@@ -64,13 +64,13 @@ impl Starfarer {
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(-10.0, 0.0, 0.0), Vector3::new(0.0, -40.0, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
-            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(8.0, 0.0, 0.0), Vector3::new(0.0, -40.0, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
+                Vector3::new(20.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
+            //     Vector3::new(8.0, 0.0, 0.0), Vector3::new(0.0, -40.0, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
+            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
+            //     Vector3::new(2.0, -2.0, 0.001), Vector3::new(0.0, -38.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(2.0, -2.0, 0.001), Vector3::new(0.0, -38.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
-            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(2.002, 2.0, 0.0), Vector3::new(0.0, -42.0, 0.0), Quaternion::new(0.5, 0.2, 0.3, 0.3), Vector3::new(0.0, 0.0, 0.0)),
+                Vector3::new(30.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::zero()),
         ];
         let player = object_manager.get_object();
         let sun = object_manager.get_object();

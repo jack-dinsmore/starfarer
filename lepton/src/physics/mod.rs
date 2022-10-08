@@ -152,7 +152,7 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                     PhysicsTask::AddGlobalForce(object, force) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
                             if let Some((_, n)) = rb.collide_normal {
-                                if force.dot(n) > 0.0 {
+                                if force.dot(n) < 0.0 {
                                     continue;
                                 }
                             }
@@ -162,7 +162,7 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                     PhysicsTask::AddGlobalImpulse(object, impulse) => {
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
                             if let Some((_, n)) = rb.collide_normal {
-                                if impulse.dot(n) > 0.0 {
+                                if impulse.dot(n) < 0.0 {
                                     continue;
                                 }
                             }
@@ -173,7 +173,7 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
                             let force = rb.orientation * force;
                             if let Some((_, n)) = rb.collide_normal {
-                                if force.dot(n) > 0.0 {
+                                if force.dot(n) < 0.0 {
                                     continue;
                                 }
                             }
@@ -184,7 +184,7 @@ impl<F: Fn(&mut Vec<PhysicsTask>, (&Object, &RigidBody), (&Object, &RigidBody))>
                         if let Some(rb) = self.rigid_bodies.get_mut(&object) {
                             let force = rb.orientation * impulse / delta_time as f64;
                             if let Some((_, n)) = rb.collide_normal {
-                                if force.dot(n) > 0.0 {
+                                if force.dot(n) < 0.0 {
                                     continue;
                                 }
                             }

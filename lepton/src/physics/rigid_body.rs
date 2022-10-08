@@ -1,7 +1,7 @@
-use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Matrix, Zero, InnerSpace, SquareMatrix, Rotation};
+use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Matrix, Zero, InnerSpace, SquareMatrix};
 
 use crate::shader::builtin;
-use super::{Updater, Collider, collider::{GJKState, CollisionData}};
+use super::{Updater, Collider, collider::CollisionData};
 
 const COLLIDE_ACCEPTANCE: f64 = 0.1; // Accept collision info when it is accurate to this fraction of delta t
 
@@ -183,46 +183,24 @@ impl RigidBody {
         
         for my_c in &self.colliders {
             for o_c in &o.colliders {
-                // Confirm the objects are within collision distance
-                let my_c_offset = my_orientation * my_c.offset();
-                let o_c_offset = o_orientation * o_c.offset();
-                let displacement = o_rb_pos - my_rb_pos - my_c_offset + o_c_offset;
-                if displacement.magnitude() > my_c.radius() + o_c.radius() {
-                    continue;
-                }
 
-                // Initialization
-                let my_inv_orientation = my_orientation.invert();
-                let o_inv_orientation = o_orientation.invert();
-                let initial_axis = displacement.normalize();
+                let collision_data = if let Collider::Radial{..} = my_c {
+                    if let Collider::Radial{..} = o_c {
+                        // No planet-planet collisions
+                        continue;
+                    }
+                    // Planet gjk
+                    Collider::planet_collide(my_c, o_c, my_rb_pos, o_rb_pos, my_orientation, o_orientation, shift)
+                } else if let Collider::Radial{..} = o_c {
+                    // Planet gjk
+                    Collider::planet_collide(o_c, my_c, o_rb_pos, my_rb_pos, o_orientation, my_orientation, -shift)
+                } else {
+                    // Normal gjk
+                    Collider::gjk_collide(my_c, o_c, my_rb_pos, o_rb_pos, my_orientation, o_orientation, shift)
+                };
 
-                let my_pos = my_c.support(my_inv_orientation * initial_axis);
-                let o_pos = o_c.support(o_inv_orientation * -initial_axis);
-                let mut dir = -(my_orientation * my_pos - (o_orientation * o_pos + displacement));
-                if shift.dot(initial_axis) > 0.0 {
-                    dir -= shift;
-                }
-                let mut state = GJKState::new((-dir, my_pos, o_pos));
-                loop {
-                    dir = dir.normalize();
-                    let my_pos = my_c.support(my_inv_orientation * dir);
-                    let o_pos = o_c.support(o_inv_orientation * -dir);
-                    let mut new_vec = my_orientation * my_pos - (o_orientation * o_pos + displacement);
-                    if shift.dot(dir) > 0.0 {
-                        new_vec += shift;
-                    }
-
-                    if new_vec.dot(dir) < 0.0 {
-                        break;
-                    }
-                    state.push((new_vec, my_pos, o_pos));
-                    if match state.contains_origin(&mut dir) {
-                        Err(_) => break,
-                        Ok(b) => b
-                    } {
-                        return state.get_collision_data(my_c_offset, my_c_offset - o_c_offset + o_rb_pos - my_rb_pos,
-                            my_orientation, o_orientation);
-                    }
+                if let Some(data) = collision_data {
+                    return data;
                 }
             }
         }

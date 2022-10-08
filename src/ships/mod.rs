@@ -209,7 +209,7 @@ impl Ship {
             + Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::RShift) as u32) as f32)
             - Vector3::unit_z() * ((key_tracker.get_state(VirtualKeyCode::RAlt) as u32) as f32);
         if ship_force.magnitude() > 0.1 {
-            ship_force *= delta_time * 40_000.0 / ship_force.magnitude();
+            ship_force *= delta_time * 80_000.0 / ship_force.magnitude();
             self.tasks.push(PhysicsTask::AddLocalImpulse(self.object, ship_force.cast().unwrap()));
         }
         let mut ship_torque = 
