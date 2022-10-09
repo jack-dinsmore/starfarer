@@ -1,12 +1,28 @@
 use cgmath::{Matrix4, Matrix3, Point3, Vector4, Vector3, Deg, EuclideanSpace, Rad};
 
 use crate::Graphics;
-use crate::shader;
+use crate::input::{Input, InputLevel};
+use crate::shader::{ShaderStages, Data};
 
 const NUM_LIGHTS: usize = 2; // Same as NUM_LIGHTS in shaders
 const MIN_DISTANCE: f32 = 0.1;
 const MAX_DISTANCE: f32 = 10_000.0;
 const UP: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
+
+
+
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct CameraData {
+    pub view: Matrix4<f32>,
+    pub proj: Matrix4<f32>,
+    pub camera_pos: Vector4<f32>,
+}
+impl Data for CameraData {
+    const STAGES: ShaderStages = ShaderStages::VERTEX.and(ShaderStages::FRAGMENT);
+    const LEVEL: InputLevel = InputLevel::Shader;
+}
 
 /// An example shader, made for use with a camera.
 pub struct Camera {
@@ -15,14 +31,12 @@ pub struct Camera {
     local_rot: Option<Matrix3<f32>>,
     theta: f32,
     phi: f32,
-    input: shader::Input,
+    pub input: Input,
 }
-
 
 impl Camera {
     pub fn new(graphics: &Graphics, pos: Vector3<f32>) -> Camera {
-        let input = shader::InputType::Camera.input(graphics);
-
+        let input = Input::new_buffer::<CameraData>(graphics);
         Camera {
             aspect: graphics.swapchain_extent.width as f32 / graphics.swapchain_extent.height as f32,
             pos,
@@ -52,7 +66,7 @@ impl Camera {
                 UP,
             ),
         };
-        let data = shader::builtin::CameraData {
+        let data = CameraData {
             view,
             proj: {
                 let mut proj = cgmath::perspective(Deg(45.0), self.aspect, MIN_DISTANCE, MAX_DISTANCE);

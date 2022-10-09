@@ -1,9 +1,13 @@
-use cgmath::{Matrix4, Vector4};
+mod camera;
+mod lights;
+
+use cgmath::{Matrix4};
 use vk_shader_macros::include_glsl;
 
-use crate::{shader, model};
-
-pub const NUM_LIGHTS: usize = 2;
+use crate::shader::{Signature, vertex};
+use crate::input::{InputType, InputLevel};
+pub use camera::*;
+pub use lights::*;
 
 #[repr(C)]
 pub struct ObjectPushConstants {
@@ -25,61 +29,36 @@ pub struct EmptyPushConstants {}
 
 
 pub struct ModelSignature;
-impl shader::Signature for ModelSignature {
-    type V = model::vertex::VertexModel;
+impl Signature for ModelSignature {
+    type V = vertex::VertexModel;
     type PushConstants = ObjectPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/tex.frag", kind: frag);
-    const INPUTS: &'static [shader::InputType] = &[
-        shader::InputType::Camera,
-        shader::InputType::Lights,
-        shader::InputType::Texture(0),
+    const INPUTS: &'static [InputType] = &[
+        InputType::Camera,
+        InputType::Lights,
+        InputType::Texture{level: InputLevel::Model},
     ];
 }
 
 pub struct UISignature;
-impl shader::Signature for UISignature {
-    type V = model::vertex::Vertex2Tex;
+impl Signature for UISignature {
+    type V = vertex::Vertex2Tex;
     type PushConstants = UIPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/ui.frag", kind: frag);
-    const INPUTS: &'static [shader::InputType] = &[
-        shader::InputType::Texture(0),
+    const INPUTS: &'static [InputType] = &[
+        InputType::Texture{level: InputLevel::Model},
     ];
 }
 
 pub struct LPSignature;
-impl shader::Signature for LPSignature {
-    type V = model::vertex::VertexLP;
+impl Signature for LPSignature {
+    type V = vertex::VertexLP;
     type PushConstants = ObjectPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shader/builtin/lp.vert", kind: vert);
-    const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/lp.frag", kind: frag);const INPUTS: &'static [shader::InputType] = &[
-        shader::InputType::Camera,
-        shader::InputType::Lights,
+    const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/lp.frag", kind: frag);const INPUTS: &'static [InputType] = &[
+        InputType::Camera,
+        InputType::Lights,
     ];
-}
-
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct CameraData {
-    pub view: Matrix4<f32>,
-    pub proj: Matrix4<f32>,
-    pub camera_pos: Vector4<f32>,
-}
-impl shader::Data for CameraData {
-    const BINDING: u32 = 1;
-    const STAGES: shader::ShaderStages = shader::ShaderStages::VERTEX.and(shader::ShaderStages::FRAGMENT);
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct LightsData {
-    pub light_pos: [Vector4<f32>; NUM_LIGHTS],
-    pub light_features: [Vector4<f32>; NUM_LIGHTS],
-    pub num_lights: u32,
-}
-impl shader::Data for LightsData {
-    const BINDING: u32 = 2;
-    const STAGES: shader::ShaderStages = shader::ShaderStages::FRAGMENT;
 }

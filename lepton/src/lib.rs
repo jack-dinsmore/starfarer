@@ -8,6 +8,7 @@ pub mod physics;
 pub mod ui;
 pub mod tools;
 pub mod backend;
+pub mod input;
 mod graphics;
 
 pub use backend::{InputReceiver, Renderer};
@@ -32,8 +33,10 @@ pub mod prelude {
         graphics::{Graphics},
         backend::{Backend, RenderTask, KeyTracker, VirtualKeyCode, MouseButton},
         physics::{Object, ObjectManager, RigidBody, PhysicsTask, Collider},
-        model::{Model, DrawState, TextureType, VertexType, vertex},
-        shader::{self, InputType, Shader, Camera, Lights, LightFeatures, builtin},
+        model::{Model, DrawState},
+        shader::{self, Shader, builtin, vertex},
+        input::{InputType, Input, TextureType, VertexType},
         ui::{UserInterface, Element, ElementData, Font, color},
+        tools,
     };
 }

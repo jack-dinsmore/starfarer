@@ -1,109 +1,59 @@
-use anyhow::Result;
 use ash::vk;
+use std::sync::mpsc::Sender;
 use std::ptr;
 use std::cmp::max;
-use std::rc::Rc;
-use cgmath::Matrix4;
-use std::sync::mpsc::Sender;
 
-pub mod vertex;
-use vertex::*;
-use crate::graphics::{Graphics, Deletable};
-use crate::shader::{Shader, Signature};
+mod input_types;
+
+use crate::graphics::{Graphics, Deletable, DoubleBuffered};
+use crate::shader::Data;
+pub use input_types::*;
 
 const BLANK_WIDTH: u32 = 4;
 const BLANK_HEIGHT: u32 = 4;
 const ALMOST_ONE: f32 = 0.999;
 
-#[derive(Debug)]
-pub struct Model {
-    vertex_buffer: vk::Buffer,
-    vertex_buffer_memory: vk::DeviceMemory,
-    index_buffer: vk::Buffer,
-    index_buffer_memory: vk::DeviceMemory,
-    num_indices: u32,
 
-    pub(crate) texture_image: vk::Image,
-    texture_image_view: vk::ImageView,
-    pub(crate) texture_image_memory: vk::DeviceMemory,
-    texture_sampler: vk::Sampler,
-    _mip_levels: u32,
-    delete_sender: Option<Sender<Deletable>>,
-    
-    descriptor_sets: Vec<vk::DescriptorSet>,
-}
+/// An outward-facing UBO wrapper. One per UBO
+pub enum Input {
+    Buffer {
+        uniform_buffers: DoubleBuffered<vk::Buffer>,
+        uniform_buffers_memory: DoubleBuffered<vk::DeviceMemory>,
+        size: u64,
 
-pub enum DrawState {
-    Standard(Rc<Model>),
-    Offset(Rc<Model>, Matrix4<f32>),
-}
+        delete_sender: Sender<Deletable>,
+    },
 
-pub enum VertexType<'a, V: Vertex> {
-    Specified(Vec<V>, Vec<u32>),
-    Compiled(&'a [u8], usize),
-}
+    Texture {
+        texture_image: vk::Image,
+        texture_image_view: vk::ImageView,
+        texture_image_memory: vk::DeviceMemory,
+        texture_sampler: vk::Sampler,
+        _mip_levels: u32,
 
-impl<'a, V: Vertex> VertexType<'a, V> {
-    fn to_vectors(bytes: &'a [u8], num_indices: usize) -> (Vec<V>, Vec<u32>) {
-        let vertex_bytes = bytes.len() - num_indices * std::mem::size_of::<u32>();
-        unsafe {(
-            std::slice::from_raw_parts((&bytes[0] as *const u8) as *const V,
-                (vertex_bytes / std::mem::size_of::<V>()) as usize).to_vec(),
-            std::slice::from_raw_parts((&bytes[vertex_bytes] as *const u8) as *const u32,
-                num_indices).to_vec()
-        )}
-    }
-
-    pub fn skybox<'b>() -> VertexType::<'b, Vertex3Tex> {
-        let vertices = vec![
-            Vertex3Tex { pos: [-ALMOST_ONE, ALMOST_ONE, ALMOST_ONE], coord: [0.0, 0.0]},
-            Vertex3Tex { pos: [-ALMOST_ONE, -ALMOST_ONE, ALMOST_ONE], coord: [0.499, 0.0]},
-            Vertex3Tex { pos: [ALMOST_ONE, ALMOST_ONE, ALMOST_ONE], coord: [0.0, 0.333]},
-            Vertex3Tex { pos: [ALMOST_ONE, -ALMOST_ONE, ALMOST_ONE], coord: [0.499, 0.333]},
-            Vertex3Tex { pos: [ALMOST_ONE, ALMOST_ONE, -ALMOST_ONE], coord: [0.0, 0.6666]},
-            Vertex3Tex { pos: [ALMOST_ONE, -ALMOST_ONE, -ALMOST_ONE], coord: [0.499, 0.6673]},
-            Vertex3Tex { pos: [-ALMOST_ONE, ALMOST_ONE, -ALMOST_ONE], coord: [0.0, 1.0]},
-            Vertex3Tex { pos: [-ALMOST_ONE, -ALMOST_ONE, -ALMOST_ONE], coord: [0.499, 1.0]},
-            Vertex3Tex { pos: [ALMOST_ONE, -ALMOST_ONE, ALMOST_ONE], coord: [1.0, 0.6673]},
-            Vertex3Tex { pos: [-ALMOST_ONE, -ALMOST_ONE, ALMOST_ONE], coord: [1.0, 1.0]},
-
-            Vertex3Tex { pos: [-ALMOST_ONE, -ALMOST_ONE, -ALMOST_ONE], coord: [0.501, 0.0]},
-            Vertex3Tex { pos: [-ALMOST_ONE, -ALMOST_ONE, ALMOST_ONE], coord: [1.0, 0.0]},
-            Vertex3Tex { pos: [-ALMOST_ONE, ALMOST_ONE, -ALMOST_ONE], coord: [0.501, 0.333]},
-            Vertex3Tex { pos: [-ALMOST_ONE, ALMOST_ONE, ALMOST_ONE], coord: [1.0, 0.333]},
-            Vertex3Tex { pos: [ALMOST_ONE, ALMOST_ONE, -ALMOST_ONE], coord: [0.501, 0.666]},
-            Vertex3Tex { pos: [ALMOST_ONE, ALMOST_ONE, ALMOST_ONE], coord: [1.0, 0.666]},
-        ];
-        let indices = vec![
-            0, 2, 1, 1, 2, 3,
-            2, 4, 3, 3, 4, 5,
-            4, 6, 5, 5, 6, 7,
-            5, 7, 8, 8, 7, 9,
-            10, 12, 11, 11, 12, 13,
-            12, 14, 13, 13, 14, 15,
-        ];
-        VertexType::<'b, Vertex3Tex>::Specified(vertices, indices)
+        delete_sender: Sender<Deletable>,
     }
 }
 
-pub enum TextureType<'a> {
-    Mipmap(&'a [u8]),
-    Transparency(&'a [u8]),
-    Monochrome(&'a [u8]),
-    Blank,
-    None,
-}
+impl Input {
+    pub(crate) fn new_buffer<D: Data>(graphics: &Graphics) -> Self {
+        let size = std::mem::size_of::<D>() as u64;
+        let (uniform_buffers, uniform_buffers_memory) = Graphics::create_uniform_buffers(
+            graphics.memory_properties,
+            graphics.swapchain_images.len(),
+            size
+        );
 
-impl<'a> TextureType<'a> {
-    fn to_image(bytes: &'a [u8]) -> image::DynamicImage {
-        image::load_from_memory(bytes).unwrap()
+        Self::Buffer {
+            uniform_buffers,
+            uniform_buffers_memory,
+            size,
+            delete_sender: graphics.delete_sender.clone(),
+        }
     }
-}
 
-// Constructors
-impl Model {
-    pub fn new<'a, V: Vertex, S: Signature>(graphics: &Graphics, shader: &Shader<S>, vertex_type: VertexType<'a, V>, texture_type: TextureType<'a>) -> Result<Self> {
-    graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
+    pub(crate) fn new_texture<'a>(graphics: &Graphics, texture_type: TextureType<'a>) -> Self {
+        graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (image, format, mipmap) = match texture_type {
             TextureType::Mipmap(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, true),
             TextureType::Transparency(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, false),
@@ -138,108 +88,135 @@ impl Model {
                 vk::Sampler::null(),
             )
         };
-
-        let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
-            VertexType::Specified(v, i) => (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32),
-            VertexType::Compiled(b, n) => {
-                let (vertices, indices) = VertexType::<'a, V>::to_vectors(b, n);
-                (graphics.create_vertex_buffer(&vertices), graphics.create_index_buffer(&indices), indices.len() as u32)
-            },
-        };
-
-        let descriptor_sets = graphics.create_descriptor_sets::<S>(shader, texture_image_view, texture_sampler);
-            
-        let model = Model {
-            vertex_buffer,
-            vertex_buffer_memory,
-            index_buffer,
-            index_buffer_memory,
-            num_indices,
-
+        
+        Self::Texture {
             _mip_levels: mip_levels,
             texture_image,
             texture_image_view,
             texture_sampler,
             texture_image_memory,
-            delete_sender: Some(graphics.delete_sender.clone()),
-
-            descriptor_sets,
-        };
-
-        Ok(model)
-    }
-
-    pub fn null() -> Result<Self> {
-        Ok(Model {
-            vertex_buffer: vk::Buffer::null(),
-            vertex_buffer_memory: vk::DeviceMemory::null(),
-            index_buffer: vk::Buffer::null(),
-            index_buffer_memory: vk::DeviceMemory::null(),
-            num_indices: 0,
-
-            _mip_levels: 0,
-            texture_image: vk::Image::null(),
-            texture_image_view: vk::ImageView::null(),
-            texture_sampler: vk::Sampler::null(),
-            texture_image_memory: vk::DeviceMemory::null(),
-            delete_sender: None,
-
-            descriptor_sets: Vec::new(),
-        })
-    }
-}
-
-impl Model {
-    pub(crate) fn render(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
-        if self.num_indices == 0 { return; }
-
-        self.bind_all(pipeline_layout, command_buffer, frame_index, push_constant_bytes);
-        unsafe {
-            crate::get_device().cmd_draw_indexed(command_buffer, self.num_indices, 1, 0, 0, 0);
+            delete_sender: graphics.delete_sender.clone(),
         }
+
     }
 
-    pub(crate) fn render_some(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize,
-        push_constant_bytes: Option<&[u8]>, start_index: usize, count: usize) {
-        self.bind_all(pipeline_layout, command_buffer, frame_index, push_constant_bytes);
-        unsafe {
-            crate::get_device().cmd_draw_indexed(command_buffer, count as u32, 1, start_index as u32, 0, 0);
-        }
-    }
+    pub fn update<D: Data>(&self, uniform: D, buffer_index: usize) {
+        match &self {
+            Self::Buffer{uniform_buffers_memory, size, ..} => {
+                let ubos = [uniform];
 
-    fn bind_all(&self, pipeline_layout: vk::PipelineLayout, command_buffer: vk::CommandBuffer, frame_index: usize, push_constant_bytes: Option<&[u8]>) {
-        if self.num_indices == 0 { return; }
+                unsafe {
+                    let data_ptr =crate::get_device().map_memory(uniform_buffers_memory.get(buffer_index),
+                        0, *size, vk::MemoryMapFlags::empty())
+                            .expect("Failed to Map Memory") as *mut D;
         
-        let vertex_buffers = [self.vertex_buffer];
-        let offsets = [0_u64];
-        let descriptor_sets_to_bind = [self.descriptor_sets[frame_index]];
+                    data_ptr.copy_from_nonoverlapping(ubos.as_ptr(), 1);
+        
+                    crate::get_device().unmap_memory(uniform_buffers_memory.get(buffer_index));
+                }
+            },
+            _ => unimplemented!()
+        }
+    }
 
-        unsafe {
-            crate::get_device().cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-            crate::get_device().cmd_bind_index_buffer(command_buffer, self.index_buffer, 0, vk::IndexType::UINT32);
-            crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
-                pipeline_layout, 0, &descriptor_sets_to_bind, &[]);
-            if let Some(pc) = push_constant_bytes {
-                crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT, 0, pc);
+    pub(crate) fn add_descriptor(&self, descriptor_sets: &DoubleBuffered<vk::DescriptorSet>, binding: u32) {
+        match &self {
+            Self::Buffer { uniform_buffers, size, .. } => {
+                for (buffer_index, descriptor_set) in descriptor_sets.iter().enumerate() {
+                    let descriptor_buffer_infos = [vk::DescriptorBufferInfo {
+                        buffer: uniform_buffers.get(buffer_index),
+                        offset: 0,
+                        range: *size,
+                    }];
+        
+                    let descriptor_write_sets = [vk::WriteDescriptorSet {
+                        s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
+                        p_next: ptr::null(),
+                        dst_set: *descriptor_set,
+                        dst_binding: binding,
+                        dst_array_element: 0,
+                        descriptor_count: 1,
+                        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+                        p_image_info: ptr::null(),
+                        p_buffer_info: descriptor_buffer_infos.as_ptr(),
+                        p_texel_buffer_view: ptr::null(),
+                    }];
+                    unsafe {
+                        crate::get_device().update_descriptor_sets(&descriptor_write_sets, &[]);
+                    }
+                }
+            },
+
+            Self::Texture { texture_image_view, texture_sampler, .. } => {
+                for descriptor_set in descriptor_sets.iter() {
+                    let descriptor_image_infos = [vk::DescriptorImageInfo {
+                        sampler: *texture_sampler,
+                        image_view: *texture_image_view,
+                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    }];
+        
+                    let descriptor_write_sets = [vk::WriteDescriptorSet {
+                        s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
+                        p_next: ptr::null(),
+                        dst_set: *descriptor_set,
+                        dst_binding: binding,
+                        dst_array_element: 0,
+                        descriptor_count: 1,
+                        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                        p_image_info: descriptor_image_infos.as_ptr(),
+                        p_buffer_info: ptr::null(),
+                        p_texel_buffer_view: ptr::null(),
+                    }];
+                    unsafe {
+                        crate::get_device().update_descriptor_sets(&descriptor_write_sets, &[]);
+                    }
+                }
             }
         }
     }
 }
 
-impl Drop for Model {
+impl Drop for Input {
     fn drop(&mut self) {
-        self.delete_sender.as_ref().unwrap().send(Deletable::Buffer(self.vertex_buffer, self.vertex_buffer_memory)).unwrap_or(());
-        self.delete_sender.as_ref().unwrap().send(Deletable::Buffer(self.index_buffer, self.index_buffer_memory)).unwrap_or(());
-        self.delete_sender.as_ref().unwrap().send(Deletable::DescriptorSets(self.descriptor_sets.clone())).unwrap_or(());
-        if self.texture_sampler != vk::Sampler::null() {
-            self.delete_sender.as_ref().unwrap().send(Deletable::Sampler(self.texture_sampler, self.texture_image_view)).unwrap_or(());
-            self.delete_sender.as_ref().unwrap().send(Deletable::Image(self.texture_image, self.texture_image_memory)).unwrap_or(());
+        match &self {
+            Self::Buffer{uniform_buffers, uniform_buffers_memory, delete_sender, ..} => {
+                for (uniform_buffer, uniform_buffer_memory) in uniform_buffers.iter().zip(uniform_buffers_memory.iter()) {
+                    delete_sender.send(Deletable::Buffer(*uniform_buffer, *uniform_buffer_memory)).unwrap_or(());
+                }
+            },
+
+            Self::Texture{texture_sampler, texture_image_view, texture_image, texture_image_memory, delete_sender, ..} => {
+                if *texture_sampler != vk::Sampler::null() {
+                    delete_sender.send(Deletable::Sampler(*texture_sampler, *texture_image_view)).unwrap_or(());
+                    delete_sender.send(Deletable::Image(*texture_image, *texture_image_memory)).unwrap_or(());
+                }
+            }
         }
     }
 }
 
 impl Graphics {
+    fn create_uniform_buffers(memory_properties: vk::PhysicalDeviceMemoryProperties, num_images: usize,
+        buffer_size: u64) -> (DoubleBuffered<vk::Buffer>, DoubleBuffered<vk::DeviceMemory>) {
+
+        let mut uniform_buffers = Vec::new();
+        let mut uniform_buffers_memory = Vec::new();
+    
+        for _ in 0..num_images {
+            let (uniform_buffer, uniform_buffer_memory) = Graphics::create_buffer(
+                crate::get_device(),
+                buffer_size,
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                memory_properties,
+            );
+            uniform_buffers.push(uniform_buffer);
+            uniform_buffers_memory.push(uniform_buffer_memory);
+        }
+    
+        (DoubleBuffered::new(uniform_buffers), DoubleBuffered::new(uniform_buffers_memory))
+    }
+    
     fn check_mipmap_support(&self, format: vk::Format) {
         let format_properties = unsafe { self.instance.get_physical_device_format_properties(self.physical_device, format) };
 
@@ -382,149 +359,6 @@ impl Graphics {
         }
     }
 
-    fn create_vertex_buffer<T>(&self, data: &[T]) -> (vk::Buffer, vk::DeviceMemory) {
-        let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
-
-        let (staging_buffer, staging_buffer_memory) = Self::create_buffer(
-            crate::get_device(),
-            buffer_size,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            self.memory_properties,
-        );
-
-        unsafe {
-            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
-                .expect("Failed to Map Memory") as *mut T;
-
-            data_ptr.copy_from_nonoverlapping(data.as_ptr(), data.len());
-
-            crate::get_device().unmap_memory(staging_buffer_memory);
-        }
-
-        let (vertex_buffer, vertex_buffer_memory) = Self::create_buffer(
-            crate::get_device(),
-            buffer_size,
-            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            self.memory_properties,
-        );
-
-        self.copy_buffer(&self.graphics_queue, staging_buffer, vertex_buffer, buffer_size);
-
-        unsafe {
-            crate::get_device().free_memory(staging_buffer_memory, None);
-            crate::get_device().destroy_buffer(staging_buffer, None);
-        }
-
-        (vertex_buffer, vertex_buffer_memory)
-    }
-
-    fn create_index_buffer(&self, data: &[u32]) -> (vk::Buffer, vk::DeviceMemory) {
-        let buffer_size = ::std::mem::size_of_val(data) as vk::DeviceSize;
-
-        let (staging_buffer, staging_buffer_memory) = Self::create_buffer(crate::get_device(), buffer_size, vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT, self.memory_properties);
-            
-        unsafe {
-            let data_ptr = crate::get_device().map_memory(staging_buffer_memory, 0, buffer_size, vk::MemoryMapFlags::empty())
-                .expect("Failed to Map Memory") as *mut u32;
-
-            data_ptr.copy_from_nonoverlapping(data.as_ptr(), data.len());
-
-            crate::get_device().unmap_memory(staging_buffer_memory);
-        }
-        
-        let (index_buffer, index_buffer_memory) = Self::create_buffer(
-            crate::get_device(),
-            buffer_size,
-            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::INDEX_BUFFER,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            self.memory_properties,
-        );
-
-        self.copy_buffer(&self.graphics_queue, staging_buffer, index_buffer, buffer_size);
-
-        unsafe {
-            crate::get_device().destroy_buffer(staging_buffer, None);
-            crate::get_device().free_memory(staging_buffer_memory, None);
-        }
-
-        (index_buffer, index_buffer_memory)
-    }
-
-    fn create_descriptor_sets<S: Signature>(&self, shader: &Shader<S>, texture_image_view: vk::ImageView,
-        texture_sampler: vk::Sampler) -> Vec<vk::DescriptorSet> {
-
-        let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];
-        for _ in 0..self.swapchain_images.len() {
-            layouts.push(shader.ubo_layout);
-        }
-    
-        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_SET_ALLOCATE_INFO,
-            p_next: ptr::null(),
-            descriptor_pool: self.descriptor_pool,
-            descriptor_set_count: self.swapchain_images.len() as u32,
-            p_set_layouts: layouts.as_ptr(),
-        };
-    
-        let descriptor_sets = unsafe {
-            crate::get_device()
-                .allocate_descriptor_sets(&descriptor_set_allocate_info)
-                .expect("Failed to allocate descriptor sets!")
-        };
-    
-        let descriptor_image_infos = [vk::DescriptorImageInfo {
-            sampler: texture_sampler,
-            image_view: texture_image_view,
-            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        }];
-
-
-        for (i, &descritptor_set) in descriptor_sets.iter().enumerate() {
-            let mut descriptor_write_sets = Vec::with_capacity(S::INPUTS.len() + 1);
-            let mut descriptor_buffer_infos = Vec::with_capacity(S::INPUTS.len() + 1);
-            let mut locations = Vec::with_capacity(S::INPUTS.len() + 1);
-            
-            for input_type in S::INPUTS {
-                descriptor_buffer_infos.push((0..descriptor_sets.len()).map(|i| input_type.get_uniform_descriptor_buffer_info(i))
-                    .collect::<Vec<Vec<vk::DescriptorBufferInfo>>>());
-                locations.push(input_type.get_binding());
-            }
-
-            for (j, input) in S::INPUTS.iter().enumerate() {
-                let mut write_descriptor_set = vk::WriteDescriptorSet {
-                    s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
-                    p_next: ptr::null(),
-                    dst_set: descritptor_set,
-                    dst_binding: locations[j],
-                    dst_array_element: 0,
-                    descriptor_count: 1,
-                    descriptor_type: input.get_descriptor_type(),
-                    p_image_info: ptr::null(),
-                    p_buffer_info: descriptor_buffer_infos[j][i].as_ptr(),
-                    p_texel_buffer_view: ptr::null(),
-                };
-                if input.get_descriptor_type() == vk::DescriptorType::UNIFORM_BUFFER {
-                    write_descriptor_set.p_buffer_info = descriptor_buffer_infos[j][i].as_ptr();
-                } else if input.get_descriptor_type() == vk::DescriptorType::COMBINED_IMAGE_SAMPLER {
-                    write_descriptor_set.p_image_info = descriptor_image_infos.as_ptr();
-                }
-                descriptor_write_sets.push(write_descriptor_set);
-            }
-            if texture_image_view != vk::ImageView::null() {
-                
-            }
-
-                unsafe {
-                crate::get_device().update_descriptor_sets(&descriptor_write_sets, &[]);
-            }
-        }
-    
-        descriptor_sets
-    }
-
     fn copy_buffer_to_image(&self, submit_queue: vk::Queue, buffer: vk::Buffer, image: vk::Image, width: u32, height: u32) {
         let command_buffer = self.begin_single_time_command();
     
@@ -559,6 +393,69 @@ impl Graphics {
         self.end_single_time_command(&submit_queue, command_buffer);
     }
 
+
+    fn begin_single_time_command(&self) -> vk::CommandBuffer{
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo {
+            s_type: vk::StructureType::COMMAND_BUFFER_ALLOCATE_INFO,
+            p_next: ptr::null(),
+            command_buffer_count: 1,
+            command_pool: self.command_pool,
+            level: vk::CommandBufferLevel::PRIMARY,
+        };
+    
+        let command_buffer = unsafe {
+            crate::get_device()
+                .allocate_command_buffers(&command_buffer_allocate_info)
+                .expect("Failed to allocate Command Buffers!")
+        }[0];
+    
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo {
+            s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
+            p_next: ptr::null(),
+            p_inheritance_info: ptr::null(),
+            flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+        };
+    
+        unsafe {
+            crate::get_device()
+                .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+                .expect("Failed to begin recording Command Buffer at beginning!");
+        }
+    
+        command_buffer
+    }
+
+    fn end_single_time_command(&self, submit_queue: &vk::Queue, command_buffer: vk::CommandBuffer) {
+        unsafe {
+            crate::get_device()
+                .end_command_buffer(command_buffer)
+                .expect("Failed to record Command Buffer at Ending!");
+        }
+    
+        let buffers_to_submit = [command_buffer];
+    
+        let sumbit_infos = [vk::SubmitInfo {
+            s_type: vk::StructureType::SUBMIT_INFO,
+            p_next: ptr::null(),
+            wait_semaphore_count: 0,
+            p_wait_semaphores: ptr::null(),
+            p_wait_dst_stage_mask: ptr::null(),
+            command_buffer_count: 1,
+            p_command_buffers: buffers_to_submit.as_ptr(),
+            signal_semaphore_count: 0,
+            p_signal_semaphores: ptr::null(),
+        }];
+    
+        unsafe {
+            crate::get_device()
+                .queue_submit(*submit_queue, &sumbit_infos, vk::Fence::null())
+                .expect("Failed to Queue Submit!");
+            crate::get_device()
+                .queue_wait_idle(*submit_queue)
+                .expect("Failed to wait Queue idle!");
+            crate::get_device().free_command_buffers(self.command_pool, &buffers_to_submit);
+        }
+    }
     pub(crate) fn transition_image_layout(&self, image: vk::Image, _format: vk::Format, old_layout: vk::ImageLayout, new_layout: vk::ImageLayout, mip_levels: u32) {
         let command_buffer = self.begin_single_time_command();
 
@@ -755,69 +652,6 @@ impl Graphics {
     
         self.end_single_time_command(submit_queue, command_buffer);
     } 
-
-    fn begin_single_time_command(&self) -> vk::CommandBuffer{
-        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo {
-            s_type: vk::StructureType::COMMAND_BUFFER_ALLOCATE_INFO,
-            p_next: ptr::null(),
-            command_buffer_count: 1,
-            command_pool: self.command_pool,
-            level: vk::CommandBufferLevel::PRIMARY,
-        };
-    
-        let command_buffer = unsafe {
-            crate::get_device()
-                .allocate_command_buffers(&command_buffer_allocate_info)
-                .expect("Failed to allocate Command Buffers!")
-        }[0];
-    
-        let command_buffer_begin_info = vk::CommandBufferBeginInfo {
-            s_type: vk::StructureType::COMMAND_BUFFER_BEGIN_INFO,
-            p_next: ptr::null(),
-            p_inheritance_info: ptr::null(),
-            flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
-        };
-    
-        unsafe {
-            crate::get_device()
-                .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-                .expect("Failed to begin recording Command Buffer at beginning!");
-        }
-    
-        command_buffer
-    }
-
-    fn end_single_time_command(&self, submit_queue: &vk::Queue, command_buffer: vk::CommandBuffer) {
-        unsafe {
-            crate::get_device()
-                .end_command_buffer(command_buffer)
-                .expect("Failed to record Command Buffer at Ending!");
-        }
-    
-        let buffers_to_submit = [command_buffer];
-    
-        let sumbit_infos = [vk::SubmitInfo {
-            s_type: vk::StructureType::SUBMIT_INFO,
-            p_next: ptr::null(),
-            wait_semaphore_count: 0,
-            p_wait_semaphores: ptr::null(),
-            p_wait_dst_stage_mask: ptr::null(),
-            command_buffer_count: 1,
-            p_command_buffers: buffers_to_submit.as_ptr(),
-            signal_semaphore_count: 0,
-            p_signal_semaphores: ptr::null(),
-        }];
-    
-        unsafe {
-            crate::get_device()
-                .queue_submit(*submit_queue, &sumbit_infos, vk::Fence::null())
-                .expect("Failed to Queue Submit!");
-            crate::get_device()
-                .queue_wait_idle(*submit_queue)
-                .expect("Failed to wait Queue idle!");
-            crate::get_device().free_command_buffers(self.command_pool, &buffers_to_submit);
-        }
-    }
 
     pub(crate) fn copy_buffer(&self, submit_queue: &vk::Queue,src_buffer: vk::Buffer, dst_buffer: vk::Buffer, size: vk::DeviceSize) {
 

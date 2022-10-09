@@ -1,80 +1,29 @@
-mod camera;
-mod input;
-mod lights;
+pub mod vertex;
 pub mod builtin;
+mod primitives;
 
 use ash::vk;
 use std::ptr;
 use std::ffi::CString;
 use std::marker::PhantomData;
+pub use vertex::Vertex;
 
-pub use camera::*;
-pub use lights::*;
-pub use input::{Input, InputType};
+pub use primitives::*;
 use crate::Graphics;
-use crate::model::vertex::Vertex;
+use crate::graphics::DoubleBuffered;
+use crate::input::{Input, InputLevel};
 
-pub struct ShaderStages {
-    f: u32,
-}
-
-impl ShaderStages {
-    // Must agree with vk::ShaderStageFlags
-    pub const VERTEX: Self = Self{ f: 0b1 };
-    pub const FRAGMENT: Self = Self{ f: 0b1_0000 };
-    // pub const TESSELLATION_CONTROL: u32 = Self{ f: 0b10 };
-    // pub const TESSELLATION_EVALUATION: u32 = Self{ f: 0b100 };
-    // pub const GEOMETRY: u32 = Self{ f: 0b1000 };
-    // pub const COMPUTE: u32 = Self{ f: 0b10_0000 };
-    // pub const ALL_GRAPHICS: u32 = Self{ f: 0x0000_001F };
-    // pub const ALL: u32 = Self{ f: 0x7FFF_FFFF };
-
-    const fn and(self, rhs: Self) -> Self {
-        Self{ f: self.f | rhs.f}
-    }
-}
-
-
-
-pub trait Data: Clone + Copy + Send + Sync + 'static {
-    const BINDING: u32;
-    const STAGES: ShaderStages;
-}
-
-// pub struct Signature {
-//     pub VERTEX_CODE: &'static [u32],
-//     pub FRAGMENT_CODE: &'static [u32],
-//     pub inputs: &'static [InputType],
-// }
-
-pub trait Signature {
-    type V: Vertex;
-    type PushConstants;
-    const VERTEX_CODE: &'static [u32];
-    const FRAGMENT_CODE: &'static [u32];
-    const INPUTS: &'static [InputType];
-    
-}
 
 pub struct Shader<S: Signature> {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) pipeline_layout: vk::PipelineLayout,
-    pub(crate) ubo_layout: vk::DescriptorSetLayout,
+    pub(crate) descriptor_set_layout: vk::DescriptorSetLayout,
+    pub(crate) shader_descriptor_set: Option<DoubleBuffered<vk::DescriptorSet>>,
     phantom: PhantomData<S>,
 }
 
-pub trait ShaderTrait {
-    fn get_pipeline(&self) -> vk::Pipeline;
-    fn get_pipeline_layout(&self) -> vk::PipelineLayout;
-}
-
-impl<S: Signature> ShaderTrait for Shader<S> {
-    fn get_pipeline(&self) -> vk::Pipeline { self.pipeline }
-    fn get_pipeline_layout(&self) -> vk::PipelineLayout { self.pipeline_layout}
-}
-
 impl<S: Signature> Shader<S> {
-    pub fn new(graphics: &mut Graphics) -> Self {
+    pub fn new(graphics: &mut Graphics, inputs: Vec<&Input>) -> Self {
         let vert_shader_module = graphics.create_shader_module(S::VERTEX_CODE.to_vec());
         let frag_shader_module = graphics.create_shader_module(S::FRAGMENT_CODE.to_vec());
 
@@ -103,9 +52,9 @@ impl<S: Signature> Shader<S> {
             },
         ];
 
-        let ubo_layout = Graphics::create_ubo_layout(S::INPUTS);
+        let (descriptor_set_layout, shader_descriptor_set) = Self::create_descriptor_sets(graphics, inputs);
 
-        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, ubo_layout);
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, descriptor_set_layout);
 
         unsafe {
             crate::get_device().destroy_shader_module(vert_shader_module, None);
@@ -115,7 +64,8 @@ impl<S: Signature> Shader<S> {
         Self {
             pipeline,
             pipeline_layout,
-            ubo_layout,
+            descriptor_set_layout,
+            shader_descriptor_set,
             phantom: PhantomData,
         }
     }
@@ -151,7 +101,7 @@ impl<S: Signature> Shader<S> {
             },
         ];
 
-        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, self.ubo_layout);
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, self.descriptor_set_layout);
 
         unsafe {
             crate::get_device().destroy_shader_module(frag_shader_module, None);
@@ -165,12 +115,64 @@ impl<S: Signature> Shader<S> {
     }
 }
 
+/// Private static functions
+impl<S: Signature> Shader<S> {
+    fn create_descriptor_sets(graphics: &Graphics, inputs: Vec<&Input>) -> (vk::DescriptorSetLayout, Option<DoubleBuffered<vk::DescriptorSet>>) {
+        let mut descriptor_set_layout_bindings = Vec::with_capacity(S::INPUTS.len());
+        let mut has_shader_descriptors = false;
+
+        for (i, input_type) in S::INPUTS.iter().enumerate() {
+            descriptor_set_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+                // Shader uniform
+                binding: i as u32,
+                descriptor_type: input_type.get_descriptor_type(),
+                descriptor_count: 1,
+                stage_flags: input_type.get_stages(),
+                p_immutable_samplers: ptr::null(),
+            });
+
+            if let InputLevel::Shader = input_type.get_level() {
+                has_shader_descriptors = true;
+            }
+        }
+
+        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
+            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            p_next: ptr::null(),
+            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+            binding_count: descriptor_set_layout_bindings.len() as u32,
+            p_bindings: (&descriptor_set_layout_bindings[..]).as_ptr(),
+        };
+
+        let descriptor_set_layout = unsafe {
+            crate::get_device()
+                .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
+                .expect("Failed to create descriptor set layout!")
+        };
+
+        let shader_descriptor_set = if has_shader_descriptors {
+            let descriptor_set = graphics.allocate_descriptor_set(descriptor_set_layout);
+            for (i, input_type) in S::INPUTS.iter().enumerate() {
+                if let InputLevel::Shader = input_type.get_level() {
+                    inputs[i].add_descriptor(&descriptor_set, i as u32);
+                }
+            }
+            Some(descriptor_set)
+        } else {
+            None
+        };
+
+        (descriptor_set_layout, shader_descriptor_set)
+    }
+}
+
 impl<S: Signature> Drop for Shader<S> {
     fn drop(&mut self) {
         unsafe {
             if let Some(device) = &crate::graphics::DEVICE {
                 device.destroy_pipeline_layout(self.pipeline_layout, None);
                 device.destroy_pipeline(self.pipeline, None);
+                device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             }
         }
     }
@@ -194,7 +196,7 @@ impl Graphics {
     }
 
     fn create_graphics_pipeline<S: Signature>(&self, shader_stages: &[vk::PipelineShaderStageCreateInfo],
-        ubo_layout: vk::DescriptorSetLayout) -> (vk::Pipeline, vk::PipelineLayout) {
+        descriptor_set_layout: vk::DescriptorSetLayout) -> (vk::Pipeline, vk::PipelineLayout) {
 
         let binding_description = S::V::get_binding_descriptions();
         let attribute_description = S::V::get_attribute_descriptions();
@@ -315,7 +317,7 @@ impl Graphics {
             blend_constants: [0.0, 0.0, 0.0, 0.0],
         };
 
-        let set_layouts = [ubo_layout];
+        let set_layouts = [descriptor_set_layout];
 
         let push_constant_size = std::mem::size_of::<S::PushConstants>();
         let push_constant_ranges = [vk::PushConstantRange {
@@ -383,34 +385,5 @@ impl Graphics {
         };
 
         (graphics_pipelines[0], pipeline_layout)
-    }
-
-
-    fn create_ubo_layout(input_types: &'static [InputType]) -> vk::DescriptorSetLayout {
-        let mut ubo_layout_bindings = Vec::with_capacity(input_types.len() + 1);
-        for input_type in input_types {
-            ubo_layout_bindings.push(vk::DescriptorSetLayoutBinding {
-                // Shader uniform
-                binding: input_type.get_binding(),
-                descriptor_type: input_type.get_descriptor_type(),
-                descriptor_count: 1,
-                stage_flags: input_type.get_stages(),
-                p_immutable_samplers: ptr::null(),
-            });
-        }
-
-        let ubo_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            binding_count: ubo_layout_bindings.len() as u32,
-            p_bindings: (&ubo_layout_bindings[..]).as_ptr(),
-        };
-
-        unsafe {
-            crate::get_device()
-                .create_descriptor_set_layout(&ubo_layout_create_info, None)
-                .expect("Failed to create descriptor set layout!")
-        }
     }
 }

@@ -60,7 +60,7 @@ impl Backend {
         let mut graphics_limiter = FPSLimiter::with_limits(None, None);
         let mut physics_limiter = FPSLimiter::with_limits(Some(60), Some(2));
         let mut first_mouse_motion = true;
-        lepton.prepare(&graphics);
+        lepton.load_other(&graphics);
         
         // Spawn the physics engine
         thread::spawn(move || {
@@ -143,10 +143,10 @@ impl Backend {
                 | Event::RedrawRequested(_window_id) => {
                     let delta_time = graphics_limiter.tick_frame();
                     graphics.receive();
-                    self.physics_data_sender.send(lepton.update(&graphics, delta_time)).unwrap();
+                    self.physics_data_sender.send(lepton.update_physics(&graphics, delta_time)).unwrap();
                     match graphics.begin_frame() {
                         Some(data) => {
-                            let tasks = lepton.render(&graphics, data.buffer_index);
+                            let tasks = lepton.update_graphics(&graphics, data.buffer_index);
                             graphics.record(data.buffer_index, tasks);
                             graphics.render(data);
                         },

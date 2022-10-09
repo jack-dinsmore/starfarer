@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::Path;
 use anyhow::{Result, bail};
 
-use crate::model::vertex::VertexModel;
+use crate::shader::vertex::VertexModel;
 
 /// Helper function to convert [c_char; SIZE] to string
 pub(crate) fn vk_to_string(raw_string_array: &[c_char]) -> String {

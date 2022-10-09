@@ -1,8 +1,24 @@
 use cgmath::Vector4;
 
-use crate::shader::{Input, InputType, builtin};
+use crate::shader::{ShaderStages, Data};
+use crate::input::{Input, InputLevel};
 use crate::physics::Object;
 use crate::Graphics;
+
+pub const NUM_LIGHTS: usize = 2;
+
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct LightsData {
+    pub light_pos: [Vector4<f32>; NUM_LIGHTS],
+    pub light_features: [Vector4<f32>; NUM_LIGHTS],
+    pub num_lights: u32,
+}
+impl Data for LightsData {
+    const STAGES: ShaderStages = ShaderStages::FRAGMENT;
+    const LEVEL: InputLevel = InputLevel::Shader;
+}
 
 pub struct LightFeatures {
     pub diffuse_coeff: f32,
@@ -18,20 +34,19 @@ impl LightFeatures {
 }
 
 pub struct Lights {
-    object_indices: [Option<Object>; builtin::NUM_LIGHTS],
-    light_pos: [Vector4::<f32>; builtin::NUM_LIGHTS],
-    light_features: [Vector4<f32>; builtin::NUM_LIGHTS],
-    input: Input,
+    object_indices: [Option<Object>; NUM_LIGHTS],
+    light_pos: [Vector4::<f32>; NUM_LIGHTS],
+    light_features: [Vector4<f32>; NUM_LIGHTS],
+    pub input: Input,
 }
 
 impl Lights {
     pub fn new(graphics: &Graphics) -> Self {
-        let input = InputType::Lights.input(graphics);
-
+        let input = Input::new_buffer::<LightsData>(graphics);
         Self {
-            object_indices: [None; builtin::NUM_LIGHTS],
-            light_pos: [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS],
-            light_features: [Vector4::new(0.0, 0.0, 0.0, 0.0); builtin::NUM_LIGHTS],
+            object_indices: [None; NUM_LIGHTS],
+            light_pos: [Vector4::new(0.0, 0.0, 0.0, 0.0); NUM_LIGHTS],
+            light_features: [Vector4::new(0.0, 0.0, 0.0, 0.0); NUM_LIGHTS],
             input,
         }
     }
@@ -75,7 +90,7 @@ impl Lights {
                 self.light_pos[index] = Vector4::new(pos.x, pos.y, pos.z, 1.0);
             }
         }
-        let data = builtin::LightsData {
+        let data = LightsData {
             light_pos: self.light_pos,
             light_features: self.light_features,
             num_lights,

@@ -32,6 +32,13 @@ enum LoadState {
     Unloaded,
 }
 
+#[derive(Clone, Copy)]
+pub struct Atmosphere {
+    pub base_pressure: f32, // Atmospheres
+    pub scale_height: f32,
+    pub min_alpha: f32,
+}
+
 #[derive(Debug, PartialEq)]
 struct LoadConfig {
     low_dist: i32,
@@ -39,15 +46,17 @@ struct LoadConfig {
 }
 
 pub struct Planet {
-    settings: PlanetSettings,
+    pub settings: PlanetSettings,
     noise_map: OpenSimplex,
     load_configs: Vec<(f32, LoadConfig)>,
     update_frame: u8,
 
-    object: Object,
+    pub object: Object,
     models: Vec<(MapID, LoadState)>,
     last_state: Option<(MapID, usize)>,
     model_switches: Vec<(usize, LoadDegree, Receiver<(Vec<vertex::VertexLP>, Vec<u32>)>)>,
+
+    pub atmosphere: Option<Atmosphere>,
 }
 
 impl Planet {
@@ -58,6 +67,7 @@ impl Planet {
         let request_height = 0.2;
         let spikiness = 3;
         let color_scheme = ColorScheme::make_double([0.8, 0.7, 0.3], [0.4, 0.3, 0.4], 0.5, 1000.0, 20.0);
+        let atmosphere = Atmosphere::new(1.0, 20.0);
 
         // Calculate height
         let triangle_length = std::f64::consts::PI / 2.0 / face_subdivision as f64 / map_subdivision as f64;
@@ -98,6 +108,7 @@ impl Planet {
             models,
             last_state: None,
             model_switches: Vec::new(),
+            atmosphere: Some(atmosphere),
         }
     }
 
@@ -242,5 +253,19 @@ fn closest_multiple_of(multiple: u32, number: f64) -> u32 {
         ratio as u32 * 4
     } else {
         (ratio as u32 + 1) * 4
+    }
+}
+
+impl Atmosphere {
+    fn new(base_pressure: f32, scale_height: f32) -> Self {
+        Self {
+            base_pressure,
+            scale_height,
+            min_alpha: Self::get_min_alpha(base_pressure),
+        }
+    }
+
+    fn get_min_alpha(base_pressure: f32) -> f32 {
+        base_pressure
     }
 }

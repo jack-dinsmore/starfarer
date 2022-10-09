@@ -12,24 +12,13 @@ use rustc_hash::FxHashMap;
 use cgmath::{Vector3, Matrix3};
 
 use primitives::*;
+pub(crate) use primitives::{DoubleBuffered, GraphicsInnerData, Deletable};
 pub use crate::backend::RenderTask;
-use crate::{backend::Backend, constants::*, shader, model::DrawState, physics::Object};
+use crate::{backend::Backend, constants::*, model::DrawState, physics::Object, input::InputType};
 use debug::ValidationInfo;
 
 pub(crate) type GraphicsData = FxHashMap<Object, GraphicsInnerData>;
 
-pub(crate) struct GraphicsInnerData {
-    pub push_constants: shader::builtin::ObjectPushConstants,
-    pub pos: Vector3<f32>,
-}
-
-#[derive(Clone)]
-pub(crate) enum Deletable {
-    Buffer(vk::Buffer, vk::DeviceMemory),
-    Sampler(vk::Sampler, vk::ImageView),
-    DescriptorSets(Vec<vk::DescriptorSet>),
-    Image(vk::Image, vk::DeviceMemory),
-}
 
 pub(crate) static mut DEVICE: Option<ash::Device> = None;
 
@@ -57,11 +46,11 @@ pub struct Graphics {
 
     pub(crate) swapchain_loader: ash::extensions::khr::Swapchain,
     pub(crate) swapchain: vk::SwapchainKHR,
-    pub(crate) swapchain_images: Vec<vk::Image>,
+    pub(crate) swapchain_images: DoubleBuffered<vk::Image>,
     pub(crate) swapchain_format: vk::Format,
     pub(crate) swapchain_extent: vk::Extent2D,
-    pub(crate) swapchain_imageviews: Vec<vk::ImageView>,
-    pub(crate) framebuffers: Vec<vk::Framebuffer>,
+    pub(crate) swapchain_imageviews: DoubleBuffered<vk::ImageView>,
+    pub(crate) framebuffers: DoubleBuffered<vk::Framebuffer>,
 
     pub(crate) render_pass: vk::RenderPass,
 
@@ -75,9 +64,9 @@ pub struct Graphics {
     pub(crate) descriptor_pool: vk::DescriptorPool,
 
     pub(crate) command_pool: vk::CommandPool,
-    pub(crate) image_available_semaphores: Vec<vk::Semaphore>,
-    pub(crate) render_finished_semaphores: Vec<vk::Semaphore>,
-    pub(crate) in_flight_fences: Vec<vk::Fence>,
+    pub(crate) image_available_semaphores: DoubleBuffered<vk::Semaphore>,
+    pub(crate) render_finished_semaphores: DoubleBuffered<vk::Semaphore>,
+    pub(crate) in_flight_fences: DoubleBuffered<vk::Fence>,
     pub(crate) current_frame: usize,
 
     pub(crate) swapchain_current_version: u32,
@@ -85,9 +74,8 @@ pub struct Graphics {
     pub(crate) window_width: u32,
     pub(crate) window_height: u32,
     pub(crate) mouse_position: (f32, f32),
-    input_types: Vec<shader::InputType>,
 
-    command_buffers: Vec<vk::CommandBuffer>,
+    command_buffers: DoubleBuffered<vk::CommandBuffer>,
 
     graphics_data_receiver: Receiver<GraphicsData>,
     delete_receiver: Receiver<Deletable>,
@@ -98,6 +86,8 @@ pub struct Graphics {
 
     #[cfg(target_os = "macos")]
     pub(crate) last_delta: (f64, f64),
+
+
 }
 
 
@@ -123,7 +113,7 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 impl Graphics {
     /// Initialize the Vulkan pipeline and open the window
     pub fn new(backend: &mut Backend, window_title: &'static str, window_width: u32, window_height: u32, center_cursor: bool,
-        input_types: Vec<shader::InputType>, num_shaders: usize) -> Self {
+        input_types: Vec<InputType>, num_shaders: usize) -> Self {
 
         let (delete_sender, delete_receiver) = std::sync::mpsc::channel();
 
@@ -217,7 +207,6 @@ impl Graphics {
             swapchain_ideal_version: 0,
             window_width,
             window_height,
-            input_types,
             mouse_position: (0.0, 0.0),
             command_buffers,
 
@@ -257,21 +246,21 @@ impl Graphics {
     pub(crate) fn record(&mut self, buffer_index: usize, actions: Vec<RenderTask>) {
         unsafe {
             crate::get_device().reset_command_buffer(
-                self.command_buffers[buffer_index],
+                self.command_buffers.get(buffer_index),
                 vk::CommandBufferResetFlags::empty(),
             ).expect("Resetting the command buffer failed");
         }
 
         self.delete_all(buffer_index);
 
-        self.begin_command_buffer(self.command_buffers[buffer_index], buffer_index);
+        self.begin_command_buffer(self.command_buffers.get(buffer_index), buffer_index);
         let mut pipeline_layout = None;
 
         for action in actions.iter() {
             match action {
                 RenderTask::LoadShader(s) => {
                     unsafe { crate::get_device().cmd_bind_pipeline(
-                        self.command_buffers[buffer_index],
+                        self.command_buffers.get(buffer_index),
                         vk::PipelineBindPoint::GRAPHICS,
                          s.get_pipeline());
                     }
@@ -285,13 +274,13 @@ impl Graphics {
                                     DrawState::Standard(model) => {
                                         let bytes = crate::tools::struct_as_bytes(&d.push_constants);
                                         model.render(pipeline_layout.expect("You must first load a shader"),
-                                        self.command_buffers[buffer_index], buffer_index, Some(bytes))
+                                        self.command_buffers.get(buffer_index), buffer_index, Some(bytes))
                                     },
                                     DrawState::Offset(model, matrix) => {
                                         let new_pc = d.push_constants.model * matrix;
                                         let bytes = crate::tools::struct_as_bytes(&new_pc);
                                         model.render(pipeline_layout.expect("You must first load a shader"),
-                                        self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                                        self.command_buffers.get(buffer_index), buffer_index, Some(bytes));
                                     },
                                 };
                             }
@@ -302,20 +291,24 @@ impl Graphics {
                     if let Some(d) = self.last_graphics_data.get(o) {
                         let bytes = crate::tools::struct_as_bytes(&d.push_constants);
                         m.render(pipeline_layout.expect("You must first load a shader"),
-                            self.command_buffers[buffer_index], buffer_index, Some(bytes));
+                            self.command_buffers.get(buffer_index), buffer_index, Some(bytes));
                     }
                 },
                 RenderTask::DrawModel(m) => {
                     m.render(pipeline_layout.expect("You must first load a shader"),
-                        self.command_buffers[buffer_index], buffer_index, None);
+                        self.command_buffers.get(buffer_index), buffer_index, None);
+                },
+                RenderTask::DrawModelPushConstants(m, bytes) => {
+                    m.render(pipeline_layout.expect("You must first load a shader"),
+                        self.command_buffers.get(buffer_index), buffer_index, Some(bytes));
                 },
                 RenderTask::DrawUI(u) => {
                     u.render(pipeline_layout.expect("You must first load a shader"), 
-                        self.command_buffers[buffer_index], buffer_index);
+                        self.command_buffers.get(buffer_index), buffer_index);
                 },
                 RenderTask::ClearDepthBuffer => {
                     unsafe { crate::get_device().cmd_clear_attachments(
-                        self.command_buffers[buffer_index],
+                        self.command_buffers.get(buffer_index),
                         &[vk::ClearAttachment {
                             aspect_mask: vk::ImageAspectFlags::DEPTH,
                             color_attachment: 0,
@@ -334,11 +327,11 @@ impl Graphics {
             }
         }
 
-        self.end_command_buffer(self.command_buffers[buffer_index]);
+        self.end_command_buffer(self.command_buffers.get(buffer_index));
     }
 
     pub(crate) fn begin_frame(&mut self) -> Option<RenderData> {
-        let wait_fences = [self.in_flight_fences[self.current_frame]];
+        let wait_fences = [self.in_flight_fences.get(self.current_frame)];
 
         unsafe {
             get_device()
@@ -350,7 +343,7 @@ impl Graphics {
             let result = self.swapchain_loader.acquire_next_image(
                 self.swapchain,
                 std::u64::MAX,
-                self.image_available_semaphores[self.current_frame],
+                self.image_available_semaphores.get(self.current_frame),
                 vk::Fence::null(),
             );
             match result {
@@ -365,9 +358,9 @@ impl Graphics {
             }
         };
 
-        let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
+        let wait_semaphores = [self.image_available_semaphores.get(self.current_frame)];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
+        let signal_semaphores = [self.render_finished_semaphores.get(self.current_frame)];
 
         unsafe {
             get_device()
@@ -392,7 +385,7 @@ impl Graphics {
             p_wait_semaphores: render_data.wait_semaphores.as_ptr(),
             p_wait_dst_stage_mask: render_data.wait_stages.as_ptr(),
             command_buffer_count: 1,
-            p_command_buffers: &self.command_buffers[render_data.buffer_index],
+            p_command_buffers: &self.command_buffers.get(render_data.buffer_index),
             signal_semaphore_count: render_data.signal_semaphores.len() as u32,
             p_signal_semaphores: render_data.signal_semaphores.as_ptr(),
         });
@@ -402,7 +395,7 @@ impl Graphics {
                 .queue_submit(
                     self.graphics_queue,
                     &render_data.submit_infos,
-                    self.in_flight_fences[self.current_frame],
+                    self.in_flight_fences.get(self.current_frame),
                 )
                 .expect("Failed to execute queue submit.");
         }
@@ -1114,7 +1107,7 @@ impl Graphics {
             swapchain,
             swapchain_format: surface_format.format,
             swapchain_extent: extent,
-            swapchain_images,
+            swapchain_images: DoubleBuffered::new(swapchain_images),
         }
     }
 
@@ -1207,7 +1200,7 @@ impl Graphics {
         }
     }
 
-    fn create_image_views(device: &ash::Device, surface_format: vk::Format, images: &[vk::Image]) -> Vec<vk::ImageView> {
+    fn create_image_views(device: &ash::Device, surface_format: vk::Format, images: &DoubleBuffered<vk::Image>) -> DoubleBuffered<vk::ImageView> {
         let swapchain_imageviews: Vec<vk::ImageView> = images
             .iter()
             .map(|&image| {
@@ -1215,7 +1208,7 @@ impl Graphics {
             })
             .collect();
     
-        swapchain_imageviews
+        DoubleBuffered::new(swapchain_imageviews)
     }
 
     fn create_command_pool(device: &ash::Device, queue_families: &QueueFamilyIndices) -> vk::CommandPool {
@@ -1327,8 +1320,8 @@ impl Graphics {
         panic!("Failed to find supported format!")
     }
 
-    fn create_framebuffers(device: &ash::Device, render_pass: vk::RenderPass, swapchain_image_views: &[vk::ImageView],
-        depth_image_view: vk::ImageView, color_image_view: vk::ImageView, swapchain_extent: vk::Extent2D) -> Vec<vk::Framebuffer> {
+    fn create_framebuffers(device: &ash::Device, render_pass: vk::RenderPass, swapchain_image_views: &DoubleBuffered<vk::ImageView>,
+        depth_image_view: vk::ImageView, color_image_view: vk::ImageView, swapchain_extent: vk::Extent2D) -> DoubleBuffered<vk::Framebuffer> {
         let mut framebuffers = vec![];
 
         for &image_view in swapchain_image_views.iter() {
@@ -1355,7 +1348,7 @@ impl Graphics {
             framebuffers.push(framebuffer);
         }
 
-        framebuffers
+        DoubleBuffered::new(framebuffers)
     }
 
     fn create_descriptor_pool(device: &ash::Device, swapchain_images_size: usize, num_inputs: usize, num_shaders: usize) -> vk::DescriptorPool {
@@ -1391,12 +1384,9 @@ impl Graphics {
     }
 
     fn create_sync_objects(device: &ash::Device, max_frame_in_flight: usize) -> SyncObjects {
-        let mut sync_objects = SyncObjects {
-            image_available_semaphores: vec![],
-            render_finished_semaphores: vec![],
-            inflight_fences: vec![],
-        };
-    
+        let mut image_available_semaphores = Vec::new();
+        let mut render_finished_semaphores = Vec::new();
+        let mut inflight_fences = Vec::new();
         let semaphore_create_info = vk::SemaphoreCreateInfo {
             s_type: vk::StructureType::SEMAPHORE_CREATE_INFO,
             p_next: ptr::null(),
@@ -1421,17 +1411,18 @@ impl Graphics {
                     .create_fence(&fence_create_info, None)
                     .expect("Failed to create Fence Object!");
     
-                sync_objects
-                    .image_available_semaphores
-                    .push(image_available_semaphore);
-                sync_objects
-                    .render_finished_semaphores
-                    .push(render_finished_semaphore);
-                sync_objects.inflight_fences.push(inflight_fence);
+                image_available_semaphores.push(image_available_semaphore);
+                render_finished_semaphores.push(render_finished_semaphore);
+                inflight_fences.push(inflight_fence);
             }
         }
     
-        sync_objects
+        SyncObjects {
+            image_available_semaphores: DoubleBuffered::new(image_available_semaphores),
+            render_finished_semaphores: DoubleBuffered::new(render_finished_semaphores),
+            inflight_fences: DoubleBuffered::new(inflight_fences),
+        }
+    
     }
 
     fn unload_self(&mut self) {
@@ -1472,7 +1463,7 @@ impl Graphics {
             s_type: vk::StructureType::RENDER_PASS_BEGIN_INFO,
             p_next: ptr::null(),
             render_pass: self.render_pass,
-            framebuffer: self.framebuffers[buffer_index],
+            framebuffer: self.framebuffers.get(buffer_index),
             render_area: vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: self.swapchain_extent,
@@ -1500,7 +1491,7 @@ impl Graphics {
     }
 
     /// Allocates the primary command buffer. Panics if buffer cannot be allocated.
-    fn allocate_command_buffers(command_pool: vk::CommandPool, command_buffer_count: u32) -> Vec<vk::CommandBuffer> {
+    fn allocate_command_buffers(command_pool: vk::CommandPool, command_buffer_count: u32) -> DoubleBuffered<vk::CommandBuffer> {
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo {
             s_type: vk::StructureType::COMMAND_BUFFER_ALLOCATE_INFO,
             p_next: ptr::null(),
@@ -1509,10 +1500,12 @@ impl Graphics {
             level: vk::CommandBufferLevel::PRIMARY,
         };
 
-        unsafe {
+        let buffers = unsafe {
             crate::get_device().allocate_command_buffers(&command_buffer_allocate_info)
                 .expect("Failed to allocate command buffers!")
-        }
+        };
+
+        DoubleBuffered::new(buffers)
     }
 
     fn delete_all(&mut self, buffer_index: usize) {
@@ -1533,7 +1526,7 @@ impl Graphics {
                         crate::get_device().free_memory(*m, None);
                     },
                     Deletable::DescriptorSets(v) => {
-                        crate::get_device().free_descriptor_sets(self.descriptor_pool, &v).unwrap();
+                        crate::get_device().free_descriptor_sets(self.descriptor_pool, v.as_array()).unwrap();
                     }
                 }
             }
@@ -1544,6 +1537,29 @@ impl Graphics {
         for deletable in self.delete_receiver.try_iter() {
             self.delete_queue[buffer_index].push(deletable);
         }
+    }
+
+    pub(crate) fn allocate_descriptor_set(&self, layout: vk::DescriptorSetLayout) -> DoubleBuffered<vk::DescriptorSet> {
+        let mut layouts: Vec<vk::DescriptorSetLayout> = vec![];
+        for _ in 0..self.swapchain_images.len() {
+            layouts.push(layout);
+        }
+    
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo {
+            s_type: vk::StructureType::DESCRIPTOR_SET_ALLOCATE_INFO,
+            p_next: ptr::null(),
+            descriptor_pool: self.descriptor_pool,
+            descriptor_set_count: self.swapchain_images.len() as u32,
+            p_set_layouts: layouts.as_ptr(),
+        };
+    
+        let descriptor_sets = unsafe {
+            crate::get_device()
+                .allocate_descriptor_sets(&descriptor_set_allocate_info)
+                .expect("Failed to allocate descriptor sets!")
+        };
+
+        DoubleBuffered::new(descriptor_sets)
     }
 }
 

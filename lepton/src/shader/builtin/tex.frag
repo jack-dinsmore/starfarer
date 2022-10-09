@@ -5,18 +5,18 @@
 
 #define NUM_LIGHTS 2
 
-layout (binding = 1) uniform CameraData {
+layout (binding = 0) uniform CameraData {
     mat4 view;
     mat4 proj;
     vec4 camera_pos;
 } camera_ubo;
-layout (binding = 2) uniform LightsData {
+layout (binding = 1) uniform LightsData {
     vec4 light_pos[NUM_LIGHTS];
     vec4 light_features[NUM_LIGHTS];
     uint num_lights;
 } lights_ubo;
 
-layout (binding = 0) uniform sampler2D texSampler;
+layout (binding = 2) uniform sampler2D texSampler;
 
 layout (location = 0) in vec3 normal;
 layout (location = 1) in vec2 texCoord;

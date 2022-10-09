@@ -1,8 +1,9 @@
 use ash::vk;
 
 use crate::Graphics;
-use crate::model::{Model, VertexType, TextureType, vertex::Vertex2Tex};
-use crate::shader::{Shader, builtin};
+use crate::model::{Model};
+use crate::shader::{Shader, builtin, vertex::Vertex2Tex};
+use crate::input::{Input, VertexType, TextureType};
 use crate::ui::Color;
 
 const N_COLS: usize = 12;// COMMON! DO NOT CHANGE WITHOUT ADJUSTING STARFARER_MACROS
@@ -55,7 +56,7 @@ impl Font {
         }
 
         let model = Model::new(graphics, shader, VertexType::Specified(vertices, indices),
-            TextureType::Monochrome(bytes.0)).expect("Could not load font");
+            vec![Input::new_texture(graphics, TextureType::Monochrome(bytes.0))]).expect("Could not load font");
 
         let kerns = {
             let i8_buffer = unsafe {

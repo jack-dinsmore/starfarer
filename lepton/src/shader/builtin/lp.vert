@@ -9,7 +9,7 @@ layout (push_constant) uniform ObjectPushConstants {
     mat4 model;
     mat4 rotation;
 } constants;
-layout (binding = 1) uniform CameraData {
+layout (binding = 0) uniform CameraData {
     mat4 view;
     mat4 proj;
     vec4 camera_pos;
