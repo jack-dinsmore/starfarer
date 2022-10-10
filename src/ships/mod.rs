@@ -55,7 +55,7 @@ impl ShipLoader {
         let mut output = HashMap::new();
         for (key, value) in self.load_model_data(part_id).into_iter() {
             if let Mesh::ModelMesh(vertices, indices) = value {
-                output.insert(key, Rc::new(Model::new(graphics, low_poly_shader, VertexType::Specified(vertices, indices), TextureType::None).unwrap()));
+                output.insert(key, Rc::new(Model::new(graphics, low_poly_shader, VertexType::Specified(vertices, indices), Vec::new()).unwrap()));
             }
         }
         output

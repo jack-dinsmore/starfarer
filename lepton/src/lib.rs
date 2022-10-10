@@ -35,7 +35,7 @@ pub mod prelude {
         physics::{Object, ObjectManager, RigidBody, PhysicsTask, Collider},
         model::{Model, DrawState},
         shader::{self, Shader, builtin, vertex},
-        input::{InputType, Input, TextureType, VertexType},
+        input::{InputType, InputLevel, Input, TextureType, VertexType},
         ui::{UserInterface, Element, ElementData, Font, color},
         tools,
     };

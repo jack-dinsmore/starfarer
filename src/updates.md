@@ -108,12 +108,18 @@ Collisions put in model file
 
 Fixed the GJK algorithm so that it computes the collision result without assuming that the answer is face-vertex or edge-edge
 
+## Oct 7
+
+Added the sky and improved planetary collision
+
+## Oct 9
+
+Revamped lepton so that descriptor sets are now tiered by the frequency of their update (shader level, "environment" level, and model level). Environment is unimplemented, but eventually I will do it for shared assets. Either each model will own an `Arc` of the asset and load it if the asset is unloaded, or manually loading, unloading, and deleting the asset will be necessary.
+
 ## To do:
-- Atmosphere
-- Fix planetary collision
-- Models can be replaced instead of just destroyed and remade
-- Make binary search terminal dependent on object velocity
-- Docking with the other ship
+- Test the new graphics design and implement Environment input level.
 - Make sure that double-loaded ships share textures
+- Models can be replaced instead of just destroyed and remade
+- Docking with the other ship
 - Make the number of descriptor sets for models dynamically set (also, should they be allocated per model or per shader?)
 - For speed, reduce memory accesses in the draw command (to the hash table for object and for model and for the vector of draw states)

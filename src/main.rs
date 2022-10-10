@@ -74,7 +74,7 @@ impl Starfarer {
         ];
         let player = object_manager.get_object();
         let sun = object_manager.get_object();
-        let skybox = Skybox::from_temp(graphics);
+        let skybox = Skybox::from_temp(graphics, &camera);
         let threadpool = ThreadPool::new(8);
 
         Self {

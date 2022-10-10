@@ -9,10 +9,10 @@ impl shader::Signature for SkyboxSignature {
     type PushConstants = SkyboxPushConstants;
     const VERTEX_CODE: &'static [u32] = include_glsl!("src/shaders/skybox.vert", kind: vert);
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shaders/skybox.frag", kind: frag);
-    const INPUTS: &'static [shader::InputType] = &[
-        shader::InputType::Camera,
-        shader::InputType::Texture,
-        shader::InputType::Texture,
+    const INPUTS: &'static [InputType] = &[
+        InputType::Camera,
+        InputType::Texture{level: InputLevel::Shader},
+        InputType::Texture{level: InputLevel::Model},
     ];
 }
 
@@ -37,21 +37,25 @@ pub struct Skybox {
     pub skybox_shader: Shader<SkyboxSignature>,
     pub push_constants: SkyboxPushConstants,
     pub model: Rc<Model>,
+    sky_colors: Input, // Change to solid
+    // Remove null texture
 }
 
 impl Skybox {
-    pub fn from_temp(graphics: &mut Graphics) -> Self {
-        let skybox_shader = Shader::new(graphics);
-        let model = Rc::new(Model::new(graphics, &skybox_shader,
-            VertexType::<vertex::VertexModel>::skybox(),
-            TextureType::Transparency(include_bytes!("../assets/temp/skybox.png")))
-            .expect("Model creation failed").attach(
-                ModelAttachment::Texture(include_bytes!("../assets/calc/sky-spectrum.png"))
-            ));
+    pub fn from_temp(graphics: &mut Graphics, camera: &builtin::Camera) -> Self {
+        let sky_colors = Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../assets/temp/skybox.png")));
+        let skybox_shader = Shader::new(graphics, vec![&camera.input, &sky_colors]);
+        let model = Rc::new(Model::new(
+            graphics, 
+            &skybox_shader,
+            VertexType::<vertex::VertexModel>::skybox(), 
+            vec![Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../assets/temp/skybox.png")))]
+        ).expect("Model creation failed"));
 
         Self {
             skybox_shader,
             model,
+            sky_colors,
             push_constants: SkyboxPushConstants::default(),
         }
     }

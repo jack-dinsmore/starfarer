@@ -13,12 +13,11 @@ use crate::Graphics;
 use crate::graphics::DoubleBuffered;
 use crate::input::{Input, InputLevel};
 
-
 pub struct Shader<S: Signature> {
     pub(crate) pipeline: vk::Pipeline,
     pub(crate) pipeline_layout: vk::PipelineLayout,
-    pub(crate) descriptor_set_layout: vk::DescriptorSetLayout,
-    pub(crate) shader_descriptor_set: Option<DoubleBuffered<vk::DescriptorSet>>,
+    pub(crate) model_descriptor_set_layout: Option<vk::DescriptorSetLayout>,
+    pub(crate) shader_descriptor_set: Option<(vk::DescriptorSetLayout, DoubleBuffered<vk::DescriptorSet>)>,
     phantom: PhantomData<S>,
 }
 
@@ -52,9 +51,9 @@ impl<S: Signature> Shader<S> {
             },
         ];
 
-        let (descriptor_set_layout, shader_descriptor_set) = Self::create_descriptor_sets(graphics, inputs);
+        let (shader_descriptor_set, model_descriptor_set_layout) = Self::create_descriptor_sets(graphics, inputs);
 
-        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, descriptor_set_layout);
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, &shader_descriptor_set, &model_descriptor_set_layout);
 
         unsafe {
             crate::get_device().destroy_shader_module(vert_shader_module, None);
@@ -64,7 +63,7 @@ impl<S: Signature> Shader<S> {
         Self {
             pipeline,
             pipeline_layout,
-            descriptor_set_layout,
+            model_descriptor_set_layout,
             shader_descriptor_set,
             phantom: PhantomData,
         }
@@ -101,7 +100,7 @@ impl<S: Signature> Shader<S> {
             },
         ];
 
-        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, self.descriptor_set_layout);
+        let (pipeline, pipeline_layout) = graphics.create_graphics_pipeline::<S>(&shader_stages, &self.shader_descriptor_set, &self.model_descriptor_set_layout);
 
         unsafe {
             crate::get_device().destroy_shader_module(frag_shader_module, None);
@@ -117,52 +116,91 @@ impl<S: Signature> Shader<S> {
 
 /// Private static functions
 impl<S: Signature> Shader<S> {
-    fn create_descriptor_sets(graphics: &Graphics, inputs: Vec<&Input>) -> (vk::DescriptorSetLayout, Option<DoubleBuffered<vk::DescriptorSet>>) {
-        let mut descriptor_set_layout_bindings = Vec::with_capacity(S::INPUTS.len());
+    fn create_descriptor_sets(graphics: &Graphics, inputs: Vec<&Input>
+    ) -> (Option<(vk::DescriptorSetLayout, DoubleBuffered<vk::DescriptorSet>)>, Option<vk::DescriptorSetLayout>) {
+        let mut shader_descriptor_set_layout_bindings = Vec::new();
+        let mut model_descriptor_set_layout_bindings = Vec::new();
         let mut has_shader_descriptors = false;
+        let mut has_model_descriptors = false;
 
         for (i, input_type) in S::INPUTS.iter().enumerate() {
-            descriptor_set_layout_bindings.push(vk::DescriptorSetLayoutBinding {
-                // Shader uniform
-                binding: i as u32,
-                descriptor_type: input_type.get_descriptor_type(),
-                descriptor_count: 1,
-                stage_flags: input_type.get_stages(),
-                p_immutable_samplers: ptr::null(),
-            });
-
-            if let InputLevel::Shader = input_type.get_level() {
-                has_shader_descriptors = true;
+            match input_type.get_level() {
+                InputLevel::Shader => {
+                    shader_descriptor_set_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+                        binding: i as u32,
+                        descriptor_type: input_type.get_descriptor_type(),
+                        descriptor_count: 1,
+                        stage_flags: input_type.get_stages(),
+                        p_immutable_samplers: ptr::null(),
+                    });
+                    has_shader_descriptors = true;
+                },
+                InputLevel::Model => {
+                    model_descriptor_set_layout_bindings.push(vk::DescriptorSetLayoutBinding {
+                        binding: i as u32,
+                        descriptor_type: input_type.get_descriptor_type(),
+                        descriptor_count: 1,
+                        stage_flags: input_type.get_stages(),
+                        p_immutable_samplers: ptr::null(),
+                    });
+                    has_model_descriptors = true;
+                }
             }
         }
 
-        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            p_next: ptr::null(),
-            flags: vk::DescriptorSetLayoutCreateFlags::empty(),
-            binding_count: descriptor_set_layout_bindings.len() as u32,
-            p_bindings: (&descriptor_set_layout_bindings[..]).as_ptr(),
-        };
-
-        let descriptor_set_layout = unsafe {
-            crate::get_device()
-                .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
-                .expect("Failed to create descriptor set layout!")
-        };
-
-        let shader_descriptor_set = if has_shader_descriptors {
-            let descriptor_set = graphics.allocate_descriptor_set(descriptor_set_layout);
+        let shader_set = if has_shader_descriptors {
+            let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
+                s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                p_next: ptr::null(),
+                flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+                binding_count: shader_descriptor_set_layout_bindings.len() as u32,
+                p_bindings: (&shader_descriptor_set_layout_bindings[..]).as_ptr(),
+            };
+    
+            let descriptor_set_layout = unsafe {
+                crate::get_device()
+                    .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
+                    .expect("Failed to create descriptor set layout!")
+            };
+    
+            let shader_descriptor_set = graphics.allocate_descriptor_set(descriptor_set_layout);
             for (i, input_type) in S::INPUTS.iter().enumerate() {
                 if let InputLevel::Shader = input_type.get_level() {
-                    inputs[i].add_descriptor(&descriptor_set, i as u32);
+                    inputs[i].add_descriptor(&shader_descriptor_set, i as u32);
                 }
             }
-            Some(descriptor_set)
+            Some((descriptor_set_layout, shader_descriptor_set))
         } else {
             None
         };
 
-        (descriptor_set_layout, shader_descriptor_set)
+        let model_set = if has_model_descriptors {
+            let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
+                s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                p_next: ptr::null(),
+                flags: vk::DescriptorSetLayoutCreateFlags::empty(),
+                binding_count: model_descriptor_set_layout_bindings.len() as u32,
+                p_bindings: (&model_descriptor_set_layout_bindings[..]).as_ptr(),
+            };
+    
+            Some(unsafe {
+                crate::get_device()
+                    .create_descriptor_set_layout(&descriptor_set_layout_create_info, None)
+                    .expect("Failed to create descriptor set layout!")
+            })
+        } else {
+            None
+        };
+
+        (shader_set, model_set)
+    }
+
+    pub(crate) fn get_model_bind_index(&self) -> u32 {
+        if self.shader_descriptor_set.is_none() {
+            0
+        } else {
+            1
+        }
     }
 }
 
@@ -172,7 +210,12 @@ impl<S: Signature> Drop for Shader<S> {
             if let Some(device) = &crate::graphics::DEVICE {
                 device.destroy_pipeline_layout(self.pipeline_layout, None);
                 device.destroy_pipeline(self.pipeline, None);
-                device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+                if let Some((set_layout, _)) = self.shader_descriptor_set {
+                    device.destroy_descriptor_set_layout(set_layout, None);
+                }
+                if let Some(set_layout) = self.model_descriptor_set_layout {
+                    device.destroy_descriptor_set_layout(set_layout, None);
+                }
             }
         }
     }
@@ -196,7 +239,9 @@ impl Graphics {
     }
 
     fn create_graphics_pipeline<S: Signature>(&self, shader_stages: &[vk::PipelineShaderStageCreateInfo],
-        descriptor_set_layout: vk::DescriptorSetLayout) -> (vk::Pipeline, vk::PipelineLayout) {
+        shader_descriptor_set: &Option<(vk::DescriptorSetLayout, DoubleBuffered<vk::DescriptorSet>)>,
+        model_descriptor_set_layout: &Option<vk::DescriptorSetLayout>,
+    ) -> (vk::Pipeline, vk::PipelineLayout) {
 
         let binding_description = S::V::get_binding_descriptions();
         let attribute_description = S::V::get_attribute_descriptions();
@@ -317,7 +362,14 @@ impl Graphics {
             blend_constants: [0.0, 0.0, 0.0, 0.0],
         };
 
-        let set_layouts = [descriptor_set_layout];
+        // Make sure the order of the layouts is consistent with the indices defined at the top of the file.
+        let mut set_layouts = Vec::new();
+        if let Some((set_layout, _)) = shader_descriptor_set {
+            set_layouts.push(*set_layout);
+        }
+        if let Some(set_layout) = model_descriptor_set_layout {
+            set_layouts.push(*set_layout);
+        }
 
         let push_constant_size = std::mem::size_of::<S::PushConstants>();
         let push_constant_ranges = [vk::PushConstantRange {

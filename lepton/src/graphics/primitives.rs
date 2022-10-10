@@ -79,9 +79,17 @@ pub struct DoubleBuffered<T: Clone + Copy> {
 
 impl<T: Clone + Copy> DoubleBuffered<T> {
     pub fn new(vec: Vec<T>) -> Self {
+        let mut data = unsafe { [std::mem::MaybeUninit::zeroed().assume_init(); MAX_BUFFERS] };
+        let len = vec.len();
+        if len > MAX_BUFFERS {
+            panic!("Your GPU supports too many frames.")
+        }
+        for (i, item) in vec.into_iter().enumerate()     {
+            data[i] = item;
+        }
         Self {
-            len: vec.len(),
-            data: vec.try_into().unwrap_or_else(|_: Vec<T>| panic!("Could not push double buffered vector into array.")),
+            len,
+            data,
         }
     }
 
@@ -90,7 +98,7 @@ impl<T: Clone + Copy> DoubleBuffered<T> {
     }
 
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.data.iter()
+        self.data[0..self.len].iter()
     }
 
     pub fn as_array(&self) -> &[T] {

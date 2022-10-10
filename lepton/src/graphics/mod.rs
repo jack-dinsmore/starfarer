@@ -258,13 +258,8 @@ impl Graphics {
 
         for action in actions.iter() {
             match action {
-                RenderTask::LoadShader(s) => {
-                    unsafe { crate::get_device().cmd_bind_pipeline(
-                        self.command_buffers.get(buffer_index),
-                        vk::PipelineBindPoint::GRAPHICS,
-                         s.get_pipeline());
-                    }
-                    pipeline_layout = Some(s.get_pipeline_layout());
+                RenderTask::LoadShader(shader) => {
+                    pipeline_layout = Some(shader.load(self.command_buffers.get(buffer_index), buffer_index));
                 },
                 RenderTask::DrawObject(o) => {
                     if let Some(draw_states) = self.object_models.get(o) {
@@ -1201,12 +1196,9 @@ impl Graphics {
     }
 
     fn create_image_views(device: &ash::Device, surface_format: vk::Format, images: &DoubleBuffered<vk::Image>) -> DoubleBuffered<vk::ImageView> {
-        let swapchain_imageviews: Vec<vk::ImageView> = images
-            .iter()
-            .map(|&image| {
+        let swapchain_imageviews: Vec<vk::ImageView> = images.iter().map(|&image| {
                 Graphics::create_image_view(device, image, surface_format, vk::ImageAspectFlags::COLOR, 1)
-            })
-            .collect();
+            }).collect();
     
         DoubleBuffered::new(swapchain_imageviews)
     }

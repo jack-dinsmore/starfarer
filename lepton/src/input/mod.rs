@@ -36,7 +36,7 @@ pub enum Input {
 }
 
 impl Input {
-    pub(crate) fn new_buffer<D: Data>(graphics: &Graphics) -> Self {
+    pub fn new_buffer<D: Data>(graphics: &Graphics) -> Self {
         let size = std::mem::size_of::<D>() as u64;
         let (uniform_buffers, uniform_buffers_memory) = Graphics::create_uniform_buffers(
             graphics.memory_properties,
@@ -52,14 +52,14 @@ impl Input {
         }
     }
 
-    pub(crate) fn new_texture<'a>(graphics: &Graphics, texture_type: TextureType<'a>) -> Self {
+    pub fn new_texture<'a>(graphics: &Graphics, texture_type: TextureType<'a>) -> Self {
         graphics.check_mipmap_support(vk::Format::R8G8B8A8_SRGB);
         let (image, format, mipmap) = match texture_type {
             TextureType::Mipmap(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, true),
             TextureType::Transparency(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, false),
+            TextureType::Solid(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8_SRGB, false),
             TextureType::Monochrome(b) => (Some(TextureType::to_image(b)), vk::Format::R8_SRGB, false),
             TextureType::Blank => (None, vk::Format::R8_SRGB, false),
-            TextureType::None => (None, vk::Format::UNDEFINED, false),
         };
 
         let (

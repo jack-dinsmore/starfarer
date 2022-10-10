@@ -2,7 +2,7 @@ use ash::vk;
 
 use super::vertex::Vertex;
 use crate::input::{InputType, InputLevel};
-use crate::shader::Shader;
+use crate::shader::{Shader};
 
 pub struct ShaderStages {
     pub(crate) f: u32,
@@ -43,9 +43,39 @@ pub trait Signature {
 pub trait ShaderTrait {
     fn get_pipeline(&self) -> vk::Pipeline;
     fn get_pipeline_layout(&self) -> vk::PipelineLayout;
+    fn get_descriptor_set(&self, frame_index: usize) -> Option<vk::DescriptorSet>;
+    fn get_bind_index(&self) -> u32;
+    fn load(&self, command_buffer: vk::CommandBuffer, frame_index: usize) ->  vk::PipelineLayout{
+        unsafe { crate::get_device().cmd_bind_pipeline(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+                self.get_pipeline());
+        }
+        let pipeline_layout = self.get_pipeline_layout();
+
+        if let Some(set) = &self.get_descriptor_set(frame_index) {
+            let descriptor_set_to_bind = [*set];
+            unsafe {
+                crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
+                    pipeline_layout, self.get_bind_index(), &descriptor_set_to_bind, &[]);
+            }
+        }
+
+        pipeline_layout
+    }
 }
 
 impl<S: Signature> ShaderTrait for Shader<S> {
     fn get_pipeline(&self) -> vk::Pipeline { self.pipeline }
-    fn get_pipeline_layout(&self) -> vk::PipelineLayout { self.pipeline_layout}
+    fn get_pipeline_layout(&self) -> vk::PipelineLayout { self.pipeline_layout }
+    fn get_descriptor_set(&self, frame_index: usize) -> Option<vk::DescriptorSet> {
+        if let Some((_, sets)) = &self.shader_descriptor_set {
+            Some(sets.get(frame_index))
+        } else {
+            None
+        }
+    }
+    fn get_bind_index(&self) -> u32 { 
+        0
+    }
 }

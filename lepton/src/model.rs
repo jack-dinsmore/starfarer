@@ -18,6 +18,7 @@ pub struct Model {
     
     inputs: Vec<Input>,
     descriptor_set: Option<DoubleBuffered<vk::DescriptorSet>>,
+    descriptor_bind_index: u32,
     delete_sender: Option<Sender<Deletable>>,
 }
 
@@ -38,23 +39,8 @@ impl Model {
             },
         };
 
-        let descriptor_set = if inputs.is_empty() {
-            None
-        } else {
-            let descriptor_set = graphics.allocate_descriptor_set(shader.descriptor_set_layout);
-            let mut input_index = 0;
-            for (i, shader_input) in S::INPUTS.iter().enumerate() {
-                if let InputLevel::Model = shader_input.get_level() {
-                    // Check for the input in the array
-                    match inputs.get(input_index) {
-                        Some(local_input) => local_input.add_descriptor(&descriptor_set, i as u32),
-                        None => panic!("You tried to create a new model without providing enough inputs.")
-                    }
-                    input_index += 1;
-                }
-            }
-            Some(descriptor_set)
-        };
+        let descriptor_set = Self::create_descriptor_sets::<S>(graphics, shader, &inputs);
+        let descriptor_bind_index = shader.get_model_bind_index();
 
         let model = Model {
             vertex_buffer,
@@ -65,24 +51,32 @@ impl Model {
 
             inputs,
             descriptor_set,
+            descriptor_bind_index,
             delete_sender: Some(graphics.delete_sender.clone()),
         };
 
         Ok(model)
     }
 
-    // pub fn null() -> Result<Self> {
-    //     Ok(Model {
-    //         vertex_buffer: vk::Buffer::null(),
-    //         vertex_buffer_memory: vk::DeviceMemory::null(),
-    //         index_buffer: vk::Buffer::null(),
-    //         index_buffer_memory: vk::DeviceMemory::null(),
-    //         num_indices: 0,
-
-    //         handles: Vec::new(),
-    //         delete_sender: None,
-    //     })
-    // }
+    fn create_descriptor_sets<S: Signature>(graphics: &Graphics, shader: &Shader<S>, inputs: &Vec<Input>) -> Option<DoubleBuffered<vk::DescriptorSet>> {
+        match shader.model_descriptor_set_layout {
+            Some(layout) => {
+                let model_descriptor_set = graphics.allocate_descriptor_set(layout);
+                let mut local_index = 0;
+                for (i, input_type) in S::INPUTS.iter().enumerate() {
+                    if let InputLevel::Model = input_type.get_level() {
+                        if local_index >= inputs.len() {
+                            panic!("Too few inputs were provided for the creation of this model")
+                        }
+                        inputs[local_index].add_descriptor(&model_descriptor_set, i as u32);
+                        local_index += 1;
+                    }
+                }
+                Some(model_descriptor_set)
+            },
+            None => None
+        }
+    }
 }
 
 impl Model {
@@ -114,7 +108,7 @@ impl Model {
             if let Some(set) = &self.descriptor_set {
                 let descriptor_set_to_bind = [set.get(frame_index)];
                 crate::get_device().cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS,
-                    pipeline_layout, 0, &descriptor_set_to_bind, &[]);
+                    pipeline_layout, self.descriptor_bind_index, &descriptor_set_to_bind, &[]);
             }
             if let Some(pc) = push_constant_bytes {
                 crate::get_device().cmd_push_constants(command_buffer, pipeline_layout,
