@@ -38,12 +38,11 @@ pub struct Skybox {
     pub push_constants: SkyboxPushConstants,
     pub model: Rc<Model>,
     sky_colors: Input, // Change to solid
-    // Remove null texture
 }
 
 impl Skybox {
     pub fn from_temp(graphics: &mut Graphics, camera: &builtin::Camera) -> Self {
-        let sky_colors = Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../assets/temp/skybox.png")));
+        let sky_colors = Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../assets/calc/sky.png")));
         let skybox_shader = Shader::new(graphics, vec![&camera.input, &sky_colors]);
         let model = Rc::new(Model::new(
             graphics, 

@@ -14,8 +14,8 @@ layout (binding = 0) uniform CameraData {
     vec4 camera_pos;
 } camera_ubo;
 
-layout (binding = 1) uniform sampler2D texSampler;
-layout (binding = 2) uniform sampler2D skySampler;
+layout (binding = 1) uniform sampler2D skySampler;
+layout (binding = 2) uniform sampler2D texSampler;
 
 layout (location = 0) in vec2 texCoord;
 

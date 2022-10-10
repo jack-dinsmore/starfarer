@@ -383,7 +383,7 @@ impl Graphics {
                 p_next: ptr::null(),
                 flags: vk::PipelineLayoutCreateFlags::empty(),
                 set_layout_count: set_layouts.len() as u32,
-                p_set_layouts: set_layouts.as_ptr(),
+                p_set_layouts: (&set_layouts[..]).as_ptr(),
                 push_constant_range_count: 0,
                 p_push_constant_ranges: ptr::null(),
             }
@@ -393,7 +393,7 @@ impl Graphics {
                 p_next: ptr::null(),
                 flags: vk::PipelineLayoutCreateFlags::empty(),
                 set_layout_count: set_layouts.len() as u32,
-                p_set_layouts: set_layouts.as_ptr(),
+                p_set_layouts: (&set_layouts[..]).as_ptr(),
                 push_constant_range_count: push_constant_ranges.len() as u32,
                 p_push_constant_ranges: push_constant_ranges.as_ptr(),
             }

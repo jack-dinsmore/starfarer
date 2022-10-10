@@ -117,8 +117,9 @@ Added the sky and improved planetary collision
 Revamped lepton so that descriptor sets are now tiered by the frequency of their update (shader level, "environment" level, and model level). Environment is unimplemented, but eventually I will do it for shared assets. Either each model will own an `Arc` of the asset and load it if the asset is unloaded, or manually loading, unloading, and deleting the asset will be necessary.
 
 ## To do:
-- Test the new graphics design and implement Environment input level.
-- Make sure that double-loaded ships share textures
+- Fix bug with loading two textures in slots 1 and 2
+- Calculate the sky texture so that the sky color as a function of angle from the sun can be read from it
+- Implement Environment input level so that double-loaded ships share textures
 - Models can be replaced instead of just destroyed and remade
 - Docking with the other ship
 - Make the number of descriptor sets for models dynamically set (also, should they be allocated per model or per shader?)
