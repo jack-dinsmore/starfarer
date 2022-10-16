@@ -775,8 +775,16 @@ impl Graphics {
             false
         };
         let is_support_sampler_anisotropy = device_features.sampler_anisotropy == 1;
-    
-        is_queue_family_supported && is_device_extension_supported && is_swapchain_supported && is_support_sampler_anisotropy
+        let is_properties_supported = Self::check_device_properties_support(instance, physical_device);
+        
+        is_queue_family_supported && is_device_extension_supported && is_swapchain_supported &&
+        is_support_sampler_anisotropy && is_properties_supported
+    }
+
+    fn check_device_properties_support(instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> bool {
+        let device_properties = unsafe { instance.get_physical_device_properties(physical_device) };
+        device_properties.limits.max_bound_descriptor_sets >= 3 &&
+        device_properties.limits.max_descriptor_set_samplers >= 2
     }
 
     fn find_queue_family(instance: &ash::Instance, physical_device: vk::PhysicalDevice, surface_stuff: &SurfaceStuff) -> QueueFamilyIndices {

@@ -1,5 +1,3 @@
-use image::GenericImageView;
-
 use crate::prelude::*;
 use std::path::Path;
 const PERCENTILE: f32 = 0.99;
@@ -63,12 +61,12 @@ fn skybox() {
         g.render(WIDTH, HEIGHT, Direction::Right, pos),
     ];
     let names = vec![
-        "up.png",
-        "down.png",
-        "forward.png",
-        "backward.png",
-        "left.png",
-        "right.png",
+        "src/galaxy/up.png",
+        "src/galaxy/down.png",
+        "src/galaxy/forward.png",
+        "src/galaxy/backward.png",
+        "src/galaxy/left.png",
+        "src/galaxy/right.png",
     ];
     let mut brightnesses = pixels.concat().concat().iter()
         .map(|c| { f32::max((c.0 + c.1 + c.2) / 3.0, 0.0) }).collect::<Vec<_>>();
@@ -111,12 +109,12 @@ fn flip_h(p: (u32, u32)) -> (u32, u32) {
 #[test]
 fn compile_skybox() {
     let names = vec![
-        "backward.png",
-        "down.png",
-        "forward.png",
-        "left.png",
-        "right.png",
-        "up.png",
+        "src/galaxy/backward.png",
+        "src/galaxy/down.png",
+        "src/galaxy/forward.png",
+        "src/galaxy/left.png",
+        "src/galaxy/right.png",
+        "src/galaxy/up.png",
     ];
     let buffers = names.iter().map(|name| {
         match image::open(&Path::new(name)).unwrap() {
@@ -150,4 +148,10 @@ fn compile_skybox() {
         }
     });
     image::save_buffer(&Path::new("skybox.png"), &new_buffer, WIDTH as u32 * 2, HEIGHT as u32 * 3, image::ColorType::Rgb8).unwrap();
+}
+
+#[test]
+fn compute_sky() {
+    let sky = Sky::new();
+    sky.save("src/sky/sky.png");
 }

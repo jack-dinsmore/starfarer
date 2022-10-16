@@ -120,8 +120,6 @@ impl<S: Signature> Shader<S> {
     ) -> (Option<(vk::DescriptorSetLayout, DoubleBuffered<vk::DescriptorSet>)>, Option<vk::DescriptorSetLayout>) {
         let mut shader_descriptor_set_layout_bindings = Vec::new();
         let mut model_descriptor_set_layout_bindings = Vec::new();
-        let mut has_shader_descriptors = false;
-        let mut has_model_descriptors = false;
 
         for (i, input_type) in S::INPUTS.iter().enumerate() {
             match input_type.get_level() {
@@ -133,7 +131,6 @@ impl<S: Signature> Shader<S> {
                         stage_flags: input_type.get_stages(),
                         p_immutable_samplers: ptr::null(),
                     });
-                    has_shader_descriptors = true;
                 },
                 InputLevel::Model => {
                     model_descriptor_set_layout_bindings.push(vk::DescriptorSetLayoutBinding {
@@ -143,18 +140,17 @@ impl<S: Signature> Shader<S> {
                         stage_flags: input_type.get_stages(),
                         p_immutable_samplers: ptr::null(),
                     });
-                    has_model_descriptors = true;
                 }
             }
         }
 
-        let shader_set = if has_shader_descriptors {
+        let shader_set = if !shader_descriptor_set_layout_bindings.is_empty() {
             let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
                 s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                 p_next: ptr::null(),
                 flags: vk::DescriptorSetLayoutCreateFlags::empty(),
                 binding_count: shader_descriptor_set_layout_bindings.len() as u32,
-                p_bindings: (&shader_descriptor_set_layout_bindings[..]).as_ptr(),
+                p_bindings: shader_descriptor_set_layout_bindings.as_ptr(),
             };
     
             let descriptor_set_layout = unsafe {
@@ -174,13 +170,13 @@ impl<S: Signature> Shader<S> {
             None
         };
 
-        let model_set = if has_model_descriptors {
+        let model_set = if !model_descriptor_set_layout_bindings.is_empty() {
             let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo {
                 s_type: vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
                 p_next: ptr::null(),
                 flags: vk::DescriptorSetLayoutCreateFlags::empty(),
                 binding_count: model_descriptor_set_layout_bindings.len() as u32,
-                p_bindings: (&model_descriptor_set_layout_bindings[..]).as_ptr(),
+                p_bindings: model_descriptor_set_layout_bindings.as_ptr(),
             };
     
             Some(unsafe {
@@ -232,8 +228,7 @@ impl Graphics {
         };
     
         unsafe {
-            crate::get_device()
-                .create_shader_module(&shader_module_create_info, None)
+            crate::get_device().create_shader_module(&shader_module_create_info, None)
                 .expect("Failed to create shader module!")
         }
     }
@@ -383,7 +378,7 @@ impl Graphics {
                 p_next: ptr::null(),
                 flags: vk::PipelineLayoutCreateFlags::empty(),
                 set_layout_count: set_layouts.len() as u32,
-                p_set_layouts: (&set_layouts[..]).as_ptr(),
+                p_set_layouts: set_layouts.as_ptr(),
                 push_constant_range_count: 0,
                 p_push_constant_ranges: ptr::null(),
             }
@@ -393,14 +388,13 @@ impl Graphics {
                 p_next: ptr::null(),
                 flags: vk::PipelineLayoutCreateFlags::empty(),
                 set_layout_count: set_layouts.len() as u32,
-                p_set_layouts: (&set_layouts[..]).as_ptr(),
+                p_set_layouts: set_layouts.as_ptr(),
                 push_constant_range_count: push_constant_ranges.len() as u32,
                 p_push_constant_ranges: push_constant_ranges.as_ptr(),
             }
         };
         let pipeline_layout = unsafe {
-            crate::get_device()
-                .create_pipeline_layout(&pipeline_layout_create_info, None)
+            crate::get_device().create_pipeline_layout(&pipeline_layout_create_info, None)
                 .expect("Failed to create pipeline layout!")
         };
 
@@ -427,8 +421,7 @@ impl Graphics {
         }];
 
         let graphics_pipelines = unsafe {
-            crate::get_device()
-                .create_graphics_pipelines(
+            crate::get_device().create_graphics_pipelines(
                     vk::PipelineCache::null(),
                     &graphic_pipeline_create_infos,
                     None,

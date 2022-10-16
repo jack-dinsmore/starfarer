@@ -24,7 +24,7 @@ const WINDOW_HEIGHT: u32 = 1080;
 const LOOK_SENSITIVITY: f32 = 0.1;
 const NUM_SHADERS: usize = 100;
 const MOVE_SENSITIVITY: f32 = 100.0;
-const G: f64 = 1.5e0;
+const G: f64 = 1.5e2;
 
 struct Starfarer {
     low_poly_shader: Shader<builtin::LPSignature>,
@@ -60,15 +60,19 @@ impl Starfarer {
         let escape_menu = menus::Escape::new(&menu_common);
         let mut object_manager = ObjectManager::new();
         let mut ship_loader = ShipLoader::new();
-        let planet = Planet::new(0, 1_000.0, &mut object_manager);
+
+        let planet_radius = 1_000.0;
+        let planet_mass = 1_000_000.0;
+        let planet = Planet::new(0, planet_radius, &mut object_manager);
+        let circ_vel = (planet_mass * G / (planet_radius + 25.0)).sqrt();
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(25.0, 0.0, 0.0), Vector3::new(0.0, -45.0, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+                Vector3::new(25.0, 0.0, 0.0), Vector3::new(0.0, -circ_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(8.0, 0.0, 0.0), Vector3::new(0.0, -40.0, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
+                Vector3::new(8.0, 0.0, 0.0), Vector3::new(0.0, -5.0 - circ_vel, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(2.0, -2.0, 0.001), Vector3::new(0.0, -38.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
+                Vector3::new(2.0, -2.0, 0.001), Vector3::new(0.0, 4.0 - circ_vel, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
                 Vector3::new(32.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::new(1.0, 1.0, 0.0)),
         ];

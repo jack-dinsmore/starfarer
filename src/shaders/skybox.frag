@@ -8,16 +8,18 @@ layout (push_constant) uniform SkyboxPushConstants {
     vec4 sun_pos;
     vec4 planet_info; // Zero if allowed, radius, scale height, min_alpha
 } constants;
-layout (binding = 0) uniform CameraData {
+
+layout (set=0, binding = 0) uniform CameraData {
     mat4 view;
     mat4 proj;
     vec4 camera_pos;
 } camera_ubo;
+layout (set=0, binding = 1) uniform sampler2D texSampler;
 
-layout (binding = 1) uniform sampler2D skySampler;
-layout (binding = 2) uniform sampler2D texSampler;
+layout (set=1, binding = 2) uniform sampler2D skySampler;
 
 layout (location = 0) in vec2 texCoord;
+layout (location = 1) in vec3 pointCoord;
 
 layout (location = 0) out vec4 outColor;
 
@@ -27,8 +29,13 @@ void main() {
         (length(constants.planet_pos - camera_ubo.camera_pos) - constants.planet_info.y)
          / constants.planet_info.z) * constants.planet_info.w;
 
-        outColor = (1.0 - alpha) * texture(texSampler, texCoord) + alpha * vec4(0.5, 0.5, 1.0, 1.0);
+        vec3 person_pos = normalize(camera_ubo.camera_pos.xyz - constants.planet_pos.xyz);
+        vec3 sun_pos = normalize(constants.sun_pos.xyz - constants.planet_pos.xyz);
+        vec3 to_sun = normalize(constants.sun_pos.xyz - camera_ubo.camera_pos.xyz);
+        vec2 skyCoord = vec2(dot(person_pos, sun_pos), dot(pointCoord, to_sun));
+
+        outColor = (1.0 - alpha) * texture(skySampler, texCoord) + alpha * texture(texSampler, skyCoord);
     } else {
-        outColor = texture(texSampler, texCoord);
+        outColor = texture(skySampler, texCoord);
     }
 }

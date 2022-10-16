@@ -37,7 +37,7 @@ pub struct Skybox {
     pub skybox_shader: Shader<SkyboxSignature>,
     pub push_constants: SkyboxPushConstants,
     pub model: Rc<Model>,
-    sky_colors: Input, // Change to solid
+    sky_colors: Input,
 }
 
 impl Skybox {
