@@ -1,4 +1,5 @@
 use statrs::function::erf;
+use noise::OpenSimplex;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlanetSettings {
@@ -9,7 +10,17 @@ pub struct PlanetSettings {
     pub radius: f64,
     pub color_scheme: ColorScheme,
     pub spikiness: i32,
+    pub noise_seed: u32,
+    pub is_star: bool,
+    pub noise_map: OpenSimplex,
 }
+
+#[derive(Copy, Clone)]
+pub enum LoadDegree {
+    High = 0,
+    Low = 2,
+}
+
 
 #[derive(Clone, Copy, Debug)]
 pub enum ColorScheme {

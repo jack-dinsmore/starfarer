@@ -42,13 +42,13 @@ pub struct Skybox {
 
 impl Skybox {
     pub fn from_temp(graphics: &mut Graphics, camera: &builtin::Camera) -> Self {
-        let sky_colors = Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../assets/calc/sky.png")));
+        let sky_colors = Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../../assets/calc/sky.png")));
         let skybox_shader = Shader::new(graphics, vec![&camera.input, &sky_colors]);
         let model = Rc::new(Model::new(
             graphics, 
             &skybox_shader,
             VertexType::<vertex::VertexModel>::skybox(), 
-            vec![Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../assets/temp/skybox.png")))]
+            vec![Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../../assets/temp/skybox.png")))]
         ).expect("Model creation failed"));
 
         Self {

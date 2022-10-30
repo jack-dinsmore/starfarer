@@ -120,10 +120,14 @@ Revamped lepton so that descriptor sets are now tiered by the frequency of their
 
 Sky texture and fixed the bug with multiple sets not being accessible to the shader.
 
+## Oct 29
+
+Added the sun
+
 # To do
 
 ## Features
-- Render the sun
+- Make the sun glow
 - Docking with the other ship
 - Orbital display
 

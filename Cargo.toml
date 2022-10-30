@@ -23,6 +23,7 @@ serde = { version = "1.0.139", features = ["derive"] }
 noise = "0.7.0"
 rustc-hash = "1.1.0"
 statrs = "0.16.0"
+rand = { version = "0.8.5", features = ["small_rng"] }
 
 [build-dependencies]
 bincode = "1.3.3"

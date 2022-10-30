@@ -5,18 +5,17 @@ mod test;
 
 mod menus;
 mod ships;
-mod skybox;
-mod planet;
+mod astro;
 mod threadpool;
 
-use skybox::Skybox;
+use astro::skybox::Skybox;
+use astro::system::SolarSystem;
 use lepton::prelude::*;
 use cgmath::{prelude::*, Vector3, Matrix3, Quaternion};
 use rustc_hash::FxHashMap;
 use threadpool::ThreadPool;
 
 use ships::{Ship, ShipLoader};
-use planet::Planet;
 
 const WINDOW_TITLE: &str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
@@ -35,14 +34,14 @@ struct Starfarer {
     lights: builtin::Lights,
     key_tracker: KeyTracker,
     last_deltas: (f64, f64),
-    planet: Planet,
+    solar_system: SolarSystem,
     threadpool: ThreadPool,
 
-    ships: Vec<Ship>,
     sun: Object,
-
+    
     player: Object,
     control_ship: Option<usize>,
+    ships: Vec<Ship>,
     
     fps_menu: UserInterface<menus::Fps>,
     escape_menu: UserInterface<menus::Escape>,
@@ -63,18 +62,18 @@ impl Starfarer {
 
         let planet_radius = 1_000.0;
         let planet_mass = 1_000_000.0;
-        let planet = Planet::new(0, planet_radius, &mut object_manager);
+        let solar_system = SolarSystem::new([0;32], &mut object_manager, 0.0);
         let circ_vel = (planet_mass * G / (planet_radius + 25.0)).sqrt();
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(25.0, 0.0, 0.0), Vector3::new(0.0, -circ_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+                Vector3::new(10_025.0, 0.0, 0.0), Vector3::new(0.0, -circ_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(8.0, 0.0, 0.0), Vector3::new(0.0, -5.0 - circ_vel, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
+                Vector3::new(10_008.0, 0.0, 0.0), Vector3::new(0.0, -5.0 - circ_vel, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(2.0, -2.0, 0.001), Vector3::new(0.0, 4.0 - circ_vel, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
+                Vector3::new(10_002.0, -2.0, 0.001), Vector3::new(0.0, 4.0 - circ_vel, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
-                Vector3::new(32.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::new(1.0, 1.0, 0.0)),
+                Vector3::new(10_032.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::new(1.0, 1.0, 0.0)),
         ];
         let player = object_manager.get_object();
         let sun = object_manager.get_object();
@@ -90,7 +89,7 @@ impl Starfarer {
             lights,
             key_tracker: KeyTracker::new(),
             last_deltas: (0.0, 0.0),
-            planet,
+            solar_system,
             threadpool,
 
             ships,
@@ -127,12 +126,14 @@ impl Starfarer {
 
     fn update_other(&mut self, graphics: &Graphics, _delta_time: f32) {
         // Get sky settings
-        self.skybox.reset_push_constants(
-            graphics.get_pos(&self.planet.object),
-            graphics.get_pos(&self.sun),
-            self.planet.atmosphere,
-            self.planet.settings.radius as f32,
-        );
+        if let Some((object, atmosphere, radius)) = self.solar_system.get_skybox_data() {
+            self.skybox.reset_push_constants(
+                graphics.get_pos(&object),
+                graphics.get_pos(&self.sun),
+                atmosphere,
+                radius,
+            );
+        }
     }
 }
 
@@ -202,7 +203,7 @@ impl Renderer for Starfarer {
             Vector3::new(2.0, 0.0, 1.0), Vector3::new(0.0, 0.0, 0.0),
             Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0))
             .motivate(65.0, Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)));
-        self.planet.init_rigid_body(&mut map);
+        self.solar_system.init_rigid_body(&mut map);
         map
     }
     
@@ -221,7 +222,7 @@ impl Renderer for Starfarer {
             None => self.control_character(delta_time, &mut tasks),
         };
 
-        self.planet.update(graphics, &self.low_poly_shader, &self.threadpool, self.camera.get_pos());
+        self.solar_system.update(graphics, &self.low_poly_shader, &self.threadpool, self.camera.get_pos());
         self.fps_menu.data.update(delta_time, &mut self.fps_menu.elements);
 
         self.update_other(graphics, delta_time);
@@ -254,7 +255,7 @@ impl Renderer for Starfarer {
         for ship in &self.ships {
             tasks.push(RenderTask::DrawObject(ship.object));
         }
-        self.planet.render(&mut tasks);
+        self.solar_system.render(&mut tasks);
 
         tasks.push(RenderTask::LoadShader(&self.ui_shader));
         tasks.push(RenderTask::DrawUI(&self.fps_menu));

@@ -2,14 +2,13 @@
 
 mod triangulation;
 mod square;
-mod primitives;
+pub(super) mod primitives;
 
-use rustc_hash::FxHashMap;
 use lepton::prelude::*;
-use cgmath::{Vector3, Matrix3, Quaternion, Zero, Matrix, InnerSpace};
-use noise::{OpenSimplex, Seedable, NoiseFn};
+use cgmath::{Vector3, Matrix3, Zero, Matrix, InnerSpace};
+use noise::{OpenSimplex, NoiseFn};
 use square::*;
-use super::threadpool::ThreadPool;
+use crate::threadpool::ThreadPool;
 use std::sync::mpsc::Receiver;
 use primitives::*;
 
@@ -18,13 +17,7 @@ const UPDATE_PERIOD: u8 = 8;
 const AMPLITUDE: [f64; NUM_OCTAVES as usize] = [
     2.0, 1.5/2.0, 1.5/4.0, 1.0/8.0, 1.0/16.0, 1.0/32.0, 1.0/64.0
 ];
-const SCALE_TO_HEIGHT_RATIO: f64 = 1.2;
-
-#[derive(Copy, Clone)]
-pub enum LoadDegree {
-    High = 0,
-    Low = 2,
-}
+pub(super) const SCALE_TO_HEIGHT_RATIO: f64 = 1.2;
 
 enum LoadState {
     High(Model),
@@ -45,9 +38,8 @@ struct LoadConfig {
     high_dist: i32,
 }
 
-pub struct Planet {
+pub(super) struct Planet {
     pub settings: PlanetSettings,
-    noise_map: OpenSimplex,
     load_configs: Vec<(f32, LoadConfig)>,
     update_frame: u8,
 
@@ -60,51 +52,29 @@ pub struct Planet {
 }
 
 impl Planet {
-    pub fn new(seed: u32, radius: f64, object_manager: &mut ObjectManager) -> Self {
-        //// Eventually choose these as functions of radius
-        let face_subdivision = 4;
-        let map_subdivision = 64;
-        let request_height = 0.2;
-        let spikiness = 3;
-        let color_scheme = ColorScheme::make_double([0.8, 0.7, 0.3], [0.4, 0.3, 0.4], 0.5, 1000.0, 20.0);
+    pub(super) fn new(settings: PlanetSettings, object: Object) -> Self {
         let atmosphere = Atmosphere::new(1.0, 20.0);
 
-        // Calculate height
-        let triangle_length = std::f64::consts::PI / 2.0 / face_subdivision as f64 / map_subdivision as f64;
-        let request_divisions = request_height / triangle_length;
-        let height_subdivision = closest_multiple_of(1 << (LoadDegree::Low as u8), request_divisions);
-        let height = triangle_length * height_subdivision as f64;
-
-        let mut models = Vec::with_capacity((face_subdivision * face_subdivision) as usize * 6);
+        let mut models = Vec::with_capacity((settings.face_subdivision * settings.face_subdivision) as usize * 6);
         for face in 0..6 {
-            for map_row in 0..(face_subdivision as u8) {
-                for map_col in 0..(face_subdivision as u8) {
+            for map_row in 0..(settings.face_subdivision as u8) {
+                for map_col in 0..(settings.face_subdivision as u8) {
                     models.push((MapID { face, map_row, map_col }, LoadState::Unloaded));
                 }
             }
         }
-        let noise_map = OpenSimplex::new().set_seed(seed);
 
         let load_configs = vec![// Sorted from high to low
-            (1.4, LoadConfig { low_dist: (face_subdivision as f64 * 1.5) as i32, high_dist: -1 } ),
+            (1.4, LoadConfig { low_dist: (settings.face_subdivision as f64 * 1.5) as i32, high_dist: -1 } ),
             (1.0, LoadConfig { low_dist: 2, high_dist: 1 } ),
         ];
 
         Self {
-            noise_map,
-            settings: PlanetSettings {
-                face_subdivision,
-                map_subdivision,
-                height_subdivision,
-                height,
-                radius,
-                color_scheme,
-                spikiness,
-            },
+            settings,
             load_configs,
             update_frame: 0,
 
-            object: object_manager.get_object(),
+            object,
             models,
             last_state: None,
             model_switches: Vec::new(),
@@ -166,7 +136,7 @@ impl Planet {
                 if let LoadState::High(_) = model {}
                 else {
                     let settings = self.settings;
-                    let noise_map = self.noise_map;
+                    let noise_map = self.settings.noise_map;
                     let id_val = *id;
                     let scale = self.settings.height * SCALE_TO_HEIGHT_RATIO;
                     self.model_switches.push((index, LoadDegree::High, threadpool.execute(move || {
@@ -179,7 +149,7 @@ impl Planet {
                 if let LoadState::Low(_) = model {}
                 else {
                     let settings = self.settings;
-                    let noise_map = self.noise_map;
+                    let noise_map = self.settings.noise_map;
                     let id_val = *id;
                     let scale = self.settings.height * SCALE_TO_HEIGHT_RATIO;
                     self.model_switches.push((index, LoadDegree::Low, threadpool.execute(move || {
@@ -204,27 +174,6 @@ impl Planet {
             }
         }
     }
-
-    pub fn init_rigid_body(&self, map: &mut FxHashMap<Object, RigidBody>) {
-        
-        let noise_map = self.noise_map.clone();
-        let radius = self.settings.radius;
-        let spikiness = self.settings.spikiness;
-        let scale = self.settings.height * SCALE_TO_HEIGHT_RATIO;
-
-        map.insert(self.object,
-            RigidBody::new(
-                Vector3::new(1100.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0),
-                Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
-            )
-            .gravitate(1_000_000.0)
-            .collide(vec![
-                Collider::planet(Box::new(move |pos| {
-                    Self::value_fn(pos / radius, noise_map, spikiness, scale) * radius
-                }), (1.0 + self.settings.height) * self.settings.radius)
-            ], 0.3)
-        );
-    }
 }
 
 impl Planet {
@@ -240,19 +189,10 @@ impl Planet {
     }
 
     /// Returns the value of a specific location, with zero being the surface
-    fn value_fn(pos: Vector3<f64>, noise_map: OpenSimplex, power: i32, scale: f64) -> f64 {
+    pub(super) fn value_fn(pos: Vector3<f64>, noise_map: OpenSimplex, power: i32, scale: f64) -> f64 {
         let mag = pos.magnitude();
         let n_pos = pos / mag;
         return Self::height_fn(n_pos, noise_map, power, scale) + (mag - 1.0)
-    }
-}
-
-fn closest_multiple_of(multiple: u32, number: f64) -> u32 {
-    let ratio = number / multiple as f64;
-    if (ratio - (ratio as u32) as f64) < 0.5 {
-        ratio as u32 * 4
-    } else {
-        (ratio as u32 + 1) * 4
     }
 }
 
