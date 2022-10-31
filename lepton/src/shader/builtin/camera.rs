@@ -6,7 +6,7 @@ use crate::shader::{ShaderStages, Data};
 
 const NUM_LIGHTS: usize = 2; // Same as NUM_LIGHTS in shaders
 const MIN_DISTANCE: f32 = 0.1;
-const MAX_DISTANCE: f32 = 10_000.0;
+const MAX_DISTANCE: f32 = 100_000.0;
 const UP: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
 
 

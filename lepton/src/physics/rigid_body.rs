@@ -77,6 +77,13 @@ impl RigidBody {
         self
     }
 
+    pub fn orbit(mut self, center: Vector3<f64>, normal: Vector3<f64>) -> Self {
+        let perigee = self.pos - center;
+        let right = perigee.cross(normal) / (normal.magnitude());
+        self.updater = Updater::Orbit{center, perigee, right, period: 5.0};
+        self
+    }
+
     pub fn gravitate(mut self, mass: f64) -> Self {
         self.mass = mass;
         self
@@ -131,6 +138,14 @@ impl RigidBody {
                 self.torque_impulse = Vector3::zero();
                 self.collide_data = None;
             },
+            Updater::Orbit{center, perigee, right, period} => {
+                let orbit_pos = (self.pos - center).normalize();
+                let x = perigee.dot(orbit_pos);
+                let y = right.dot(orbit_pos);
+                let angle = f64::atan2(y, x);
+                let new_angle = angle + 2.0 * std::f64::consts::PI * delta_time / period;
+                self.pos = center + perigee * new_angle.cos() + right * new_angle.sin();
+            }
             _ => unimplemented!()
         }
         

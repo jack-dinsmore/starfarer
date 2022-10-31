@@ -363,7 +363,7 @@ pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<
         let color = color_scheme.get_color(avg_height);
         let color = [color[0], color[1], color[2], 1.0];
 
-        let info = [1.0, 1.0, 1.0];
+        let info = [1.0, 1.0, color_scheme.ambience()];
         let normal = (p1 - p0).cross(p2 - p0).normalize();
         let normal = [normal.x  as f32, normal.y as f32, normal.z as f32];
         vertices.push(vertex::VertexLP {

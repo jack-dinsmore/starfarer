@@ -21,5 +21,5 @@ out gl_PerVertex {
 void main() {
     gl_Position = camera_ubo.proj * camera_ubo.view * (vec4(inPosition, 1.0) + camera_ubo.camera_pos);
     fragTexCoord = inTexCoord;
-    pointCoord = normalize(inPosition);
+    pointCoord = inPosition;
 }

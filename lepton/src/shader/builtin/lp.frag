@@ -36,8 +36,11 @@ void main() {
         }
         illumination += lights_ubo.light_features[index].w * (
             normal_dot + 
-            fragInfo.x * pow(max(dot(reflection, camera_pos), 0), fragInfo.y));
+            fragInfo.x * pow(max(dot(reflection, camera_pos), 0), fragInfo.y)
+        );
     }
+
+    illumination = fragInfo.z + (1.0 - fragInfo.z) * illumination;
 
     outColor = vec4(fragColor.xyz * illumination, fragColor.a);
 }

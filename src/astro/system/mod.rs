@@ -121,14 +121,14 @@ impl SolarSystem {
         let scale = settings.height * SCALE_TO_HEIGHT_RATIO;
 
         let initial_pos = if settings.is_star {
-            Vector3::new(0.0, 0.0, 0.0)
+            Vector3::new(15_000.0, 15_000.0, 0.0)
         } else {
             Vector3::new(8_990.0, 0.0, 0.0)
         };
 
         // TODO Eventually, crank up the initial pos to the current time.
 
-        RigidBody::new(
+        let mut rb = RigidBody::new(
             initial_pos, Vector3::new(0.0, 0.0, 0.0),
             Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
         )
@@ -137,7 +137,13 @@ impl SolarSystem {
             Collider::planet(Box::new(move |pos| {
                 Planet::value_fn(pos / radius, noise_map, spikiness, scale) * radius
             }), (1.0 + settings.height) * settings.radius)
-        ], 0.3)
+        ], 0.3);
+
+        if settings.is_star {
+            rb = rb.orbit(Vector3::new(8_990.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
+        }
+
+        rb
     }
 }
 
@@ -174,16 +180,30 @@ impl SolarSystem {
         }
     }
 
-    pub fn get_skybox_data(&self) -> Option<(Object, Option<Atmosphere>, f32)> {
+    pub fn get_skybox_data(&self) -> Option<(Object, Object, Option<Atmosphere>, f32)> {
         if let Some(index) = self.current_index {
             if let Some(planet) = &self.loaded_planets[index] {
                 return Some((
                     planet.object,
+                    self.get_sun(),
                     planet.atmosphere,
                     planet.settings.radius as f32,
                 ));
             }
         }
         None
+    }
+
+    pub fn illuminate(&self, lights: &mut builtin::Lights) {
+        lights.illuminate(
+            self.get_sun(),
+            builtin::LightFeatures { diffuse_coeff: 0.5, specular_coeff: 1.0, shininess: 8, brightness: 0.5}
+        );
+    }
+
+    /// Get the object corresponding to the sun
+    fn get_sun(&self) -> Object {
+        // For now, only return the first object
+        self.objects[0]
     }
 }

@@ -42,7 +42,12 @@ pub enum Updater {
     Free,
     Line,
     Circle,
-    Orbit,
+    Orbit{
+        center: Vector3<f64>,
+        perigee: Vector3<f64>,
+        right: Vector3<f64>,
+        period: f64
+    },
 }
 
 pub enum PhysicsTask {

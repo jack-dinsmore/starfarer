@@ -51,7 +51,7 @@ I made the UI struct and implemented a single-buffered texture. Performance is h
 
 Also moved the texture binding to zero instead of 3.
 
-# June 19
+## June 19
 
 Rendering text and drew FPS to screen.
 
@@ -73,31 +73,31 @@ Made textures, obj files, and fonts into their own .sfr format and included them
 
 Reorganized things into a more useful fashion and made a physics engine thread. Built rigid bodies & started astroworks thrace-class station
 
-# July 8
+## July 8
 
 Transitioned to new machine and made program run on mac. Still needs to figure out mouse camera steering.
 
-# July 9
+## July 9
 
 Solved camera steering problem: on macos: moving the cursor adds to the device mouse delta so that the action is canceled.
 
-# July 11
+## July 11
 
 Skybox
 
-# July 12
+## July 12
 
 Ship model loaded in and started working on ship backend code.
 
-# July 14
+## July 14
 
 Accessory loading. Also rehashed ship model loading so that it's done through a loader which can be more easily generalized to mid-game loading and loading of local files. Also redid the ship model and accessories.
 
-# July 17
+## July 17
 
 Terrain generation & used faster hash functions
 
-# July 28
+## July 28
 
 Collisions, GJK algorithm, and terrain collisions. I had not updated this file for a few days.
 Export with Y forward, Z up.
@@ -124,10 +124,13 @@ Sky texture and fixed the bug with multiple sets not being accessible to the sha
 
 Added the sun
 
+## Oct 30
+
+Made the sun bright and fixed up the sky.
+
 # To do
 
 ## Features
-- Make the sun glow
 - Docking with the other ship
 - Orbital display
 

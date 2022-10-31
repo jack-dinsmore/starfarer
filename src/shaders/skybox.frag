@@ -14,9 +14,8 @@ layout (set=0, binding = 0) uniform CameraData {
     mat4 proj;
     vec4 camera_pos;
 } camera_ubo;
-layout (set=0, binding = 1) uniform sampler2D texSampler;
-
-layout (set=1, binding = 2) uniform sampler2D skySampler;
+layout (set=0, binding = 1) uniform sampler2D skycolorSampler;
+layout (set=1, binding = 2) uniform sampler2D skyboxSampler;
 
 layout (location = 0) in vec2 texCoord;
 layout (location = 1) in vec3 pointCoord;
@@ -29,13 +28,26 @@ void main() {
         (length(constants.planet_pos - camera_ubo.camera_pos) - constants.planet_info.y)
          / constants.planet_info.z) * constants.planet_info.w;
 
-        vec3 person_pos = normalize(camera_ubo.camera_pos.xyz - constants.planet_pos.xyz);
-        vec3 sun_pos = normalize(constants.sun_pos.xyz - constants.planet_pos.xyz);
-        vec3 to_sun = normalize(constants.sun_pos.xyz - camera_ubo.camera_pos.xyz);
-        vec2 skyCoord = vec2(dot(person_pos, sun_pos), dot(pointCoord, to_sun));
+        vec3 person_pos = camera_ubo.camera_pos.xyz - constants.planet_pos.xyz;
+        vec3 sun_pos = constants.sun_pos.xyz - constants.planet_pos.xyz;
+        vec3 to_sun = constants.sun_pos.xyz - camera_ubo.camera_pos.xyz;
+        float day_frac = (dot(person_pos, sun_pos) / length(person_pos) / length(sun_pos)) * 0.999;
+        float solar_angle = (dot(pointCoord, to_sun) / length(to_sun) / length(pointCoord)) * 0.999;
+        if (day_frac < 0.0) {
+            outColor = texture(skyboxSampler, texCoord);
+            return;
+        }
+        vec2 skyCoord = vec2(
+            day_frac,
+            -solar_angle
+        );
 
-        outColor = (1.0 - alpha) * texture(skySampler, texCoord) + alpha * texture(texSampler, skyCoord);
+        vec4 skyColor = texture(skycolorSampler, skyCoord);
+        vec4 boxColor = texture(skyboxSampler, texCoord);
+        alpha *= skyColor.w;
+        outColor = (1.0 - alpha) * boxColor + alpha * skyColor;
+        outColor.w = 1.0;
     } else {
-        outColor = texture(skySampler, texCoord);
+        outColor = texture(skyboxSampler, texCoord);
     }
 }

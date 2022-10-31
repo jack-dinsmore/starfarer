@@ -45,4 +45,11 @@ impl ColorScheme {
                 },
         }
     }
+
+    pub fn ambience(&self) -> f32 {
+        match &self {
+            Self::Single(_) => 1.0,
+            _ => 0.0
+        }
+    }
 }
