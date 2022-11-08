@@ -42,11 +42,12 @@ pub enum Updater {
     Free,
     Line,
     Circle,
-    Orbit{
+    Orbit {
         center: Vector3<f64>,
-        perigee: Vector3<f64>,
-        right: Vector3<f64>,
-        period: f64
+        eccentricity: Vector3<f64>,
+        ang_mom: Vector3<f64>,
+        mu: f64,
+        perigee_time: f64,
     },
 }
 

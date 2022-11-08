@@ -1,4 +1,4 @@
-use cgmath::{Vector3, Quaternion};
+use cgmath::{Vector3, Quaternion, Zero};
 use rand::{SeedableRng, rngs::SmallRng};
 use lepton::prelude::*;
 use rustc_hash::FxHashMap;
@@ -34,9 +34,12 @@ impl SolarSystem {
     pub fn new(seed: [u8; 32], object_manager: &mut ObjectManager, time: f32) -> Self {
         let mut rng = SmallRng::from_seed(seed);
         let num = Self::count_planets(&mut rng);
+
+        let system_mass = 10_000_000.0;
+
         let objects = (0..num).map(|_| object_manager.get_object()).collect::<Vec<_>>();
         let settings = (0..num).map(|i| Self::load_setting(&mut rng, i)).collect::<Vec<_>>();
-        let rigid_bodies = (0..num).map(|i| Self::load_rigid_body(&mut rng, settings[i], time)).collect::<Vec<_>>();
+        let rigid_bodies = (0..num).map(|i| Self::load_rigid_body(&mut rng, system_mass, settings[i], time)).collect::<Vec<_>>();
         let loaded_planets = (0..num).map(|i| Self::initial_load(settings[i], objects[i])).collect::<Vec<_>>();
 
         Self {
@@ -114,16 +117,16 @@ impl SolarSystem {
         }
     }
 
-    fn load_rigid_body(_rng: &SmallRng, settings: PlanetSettings, time: f32) -> RigidBody {
+    fn load_rigid_body(_rng: &SmallRng, system_mass: f64, settings: PlanetSettings, time: f32) -> RigidBody {
         let noise_map = settings.noise_map.clone();
         let radius = settings.radius;
         let spikiness = settings.spikiness;
         let scale = settings.height * SCALE_TO_HEIGHT_RATIO;
 
         let initial_pos = if settings.is_star {
-            Vector3::new(15_000.0, 15_000.0, 0.0)
+            Vector3::new(0.0, 0.0, 0.0)
         } else {
-            Vector3::new(8_990.0, 0.0, 0.0)
+            Vector3::new(20_000.0, 0.0, 0.0)
         };
 
         // TODO Eventually, crank up the initial pos to the current time.
@@ -132,7 +135,6 @@ impl SolarSystem {
             initial_pos, Vector3::new(0.0, 0.0, 0.0),
             Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)
         )
-        // .gravitate(1_000_000.0)
         .collide(vec![
             Collider::planet(Box::new(move |pos| {
                 Planet::value_fn(pos / radius, noise_map, spikiness, scale) * radius
@@ -140,7 +142,13 @@ impl SolarSystem {
         ], 0.3);
 
         if settings.is_star {
-            rb = rb.orbit(Vector3::new(8_990.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
+            rb = rb.gravitate(system_mass);
+        } else {
+            rb = rb.gravitate(1_000_000.0);
+        }
+
+        if !settings.is_star {
+            rb = rb.circ_orbit(crate::G * system_mass, Vector3::zero(), Vector3::new(0.0, 0.0, 1.0));
         }
 
         rb

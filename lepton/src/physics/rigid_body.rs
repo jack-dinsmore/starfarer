@@ -3,7 +3,8 @@ use cgmath::{Vector3, Matrix3, Quaternion, Matrix4, Matrix, Zero, InnerSpace, Sq
 use crate::shader::builtin;
 use super::{Updater, Collider, collider::CollisionData};
 
-const COLLIDE_ACCEPTANCE: f64 = 0.1; // Accept collision info when it is accurate to this fraction of delta t
+/// Accept collision info when it is accurate to this fraction of delta t
+const COLLIDE_ACCEPTANCE: f64 = 0.1; 
 
 pub struct RigidBody {
     pub pos: Vector3<f64>,
@@ -77,10 +78,31 @@ impl RigidBody {
         self
     }
 
-    pub fn orbit(mut self, center: Vector3<f64>, normal: Vector3<f64>) -> Self {
-        let perigee = self.pos - center;
-        let right = perigee.cross(normal) / (normal.magnitude());
-        self.updater = Updater::Orbit{center, perigee, right, period: 5.0};
+    pub fn orbit(mut self, mu: f64, center: Vector3<f64>, eccentricity: Vector3<f64>, ang_mom: Vector3<f64>, perigee_time: f64) -> Self {
+        let hxr = ang_mom.cross(self.pos);
+        let r = self.pos.magnitude();
+        self.vel = hxr / (r*r) + mu / (ang_mom.magnitude2() * r) * hxr.cross(self.pos.cross(eccentricity));
+        self.updater = Updater::Orbit{
+            center,
+            eccentricity,
+            ang_mom,
+            mu,
+            perigee_time,
+        };
+        self
+    }
+
+    pub fn circ_orbit(mut self, mu: f64, center: Vector3<f64>, normal: Vector3<f64>) -> Self {
+        let ang_mom  = (mu * (self.pos - center).magnitude()).sqrt() * normal.normalize();
+        self.vel = (self.pos - center).cross(ang_mom) / (self.pos - center).magnitude2();
+
+        self.updater = Updater::Orbit {
+            center,
+            eccentricity: Vector3::zero(),
+            ang_mom,
+            mu,
+            perigee_time: 0.0,
+        };
         self
     }
 
@@ -138,13 +160,15 @@ impl RigidBody {
                 self.torque_impulse = Vector3::zero();
                 self.collide_data = None;
             },
-            Updater::Orbit{center, perigee, right, period} => {
-                let orbit_pos = (self.pos - center).normalize();
-                let x = perigee.dot(orbit_pos);
-                let y = right.dot(orbit_pos);
-                let angle = f64::atan2(y, x);
-                let new_angle = angle + 2.0 * std::f64::consts::PI * delta_time / period;
-                self.pos = center + perigee * new_angle.cos() + right * new_angle.sin();
+            Updater::Orbit{center, eccentricity, ang_mom, mu, ..} => {
+                let r = self.pos - center;
+
+                let e_cos_nu = eccentricity.dot(r.normalize());
+                let p = ang_mom.magnitude2() / mu;
+
+                self.vel -= mu / r.magnitude2() * r.normalize() * delta_time;
+                self.pos += self.vel * delta_time;
+                self.pos *= p / (1.0 + e_cos_nu) / self.pos.magnitude();
             }
             _ => unimplemented!()
         }

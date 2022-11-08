@@ -23,7 +23,7 @@ const WINDOW_HEIGHT: u32 = 1080;
 const LOOK_SENSITIVITY: f32 = 0.1;
 const NUM_SHADERS: usize = 100;
 const MOVE_SENSITIVITY: f32 = 100.0;
-const G: f64 = 1.5e2;
+pub const G: f64 = 1.5e1;
 
 struct Starfarer {
     low_poly_shader: Shader<builtin::LPSignature>,
@@ -58,14 +58,14 @@ impl Starfarer {
         let mut object_manager = ObjectManager::new();
         let mut ship_loader = ShipLoader::new();
 
-        let planet_radius = 1_000.0;
-        let planet_mass = 1_000_000.0;
         let solar_system = SolarSystem::new([0;32], &mut object_manager, 0.0);
-        let circ_vel = 0.0;//(planet_mass * G / (planet_radius + 25.0)).sqrt();
+        let planet_vel = (10_000_000.0 * G / 20_000.0).sqrt();
+        let orbit_vel = (1_000_000.0 * G / 1_100.0).sqrt();
+        println!("Main {}", orbit_vel);
 
         let ships = vec![
             ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(10_025.0, 0.0, 0.0), Vector3::new(0.0, -circ_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+                Vector3::new(18_900.0, 0.0, 0.0), Vector3::new(0.0, orbit_vel - planet_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
             // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
             //     Vector3::new(9_008.0, 0.0, 0.0), Vector3::new(0.0, -5.0 - circ_vel, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
             // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
