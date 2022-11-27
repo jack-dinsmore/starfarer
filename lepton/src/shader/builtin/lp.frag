@@ -16,15 +16,20 @@ layout (binding = 1) uniform LightsData {
     uint num_lights;
 } lights_ubo;
 
+layout (set=0, binding = 1) uniform sampler2D normalSampler;
+
 layout (location = 0) in vec3 worldCoord;
-layout (location = 1) in vec3 normal;
-layout (location = 2) in vec4 fragColor;
-layout (location = 3) in vec3 fragInfo;
+layout (location = 1) in vec2 uv;
+layout (location = 2) in vec3 normal;
+layout (location = 3) in vec4 fragColor;
+layout (location = 4) in vec3 fragInfo;
 
 layout (location = 0) out vec4 outColor;
 
 void main() {
     const vec3 camera_pos = normalize(camera_ubo.camera_pos.xyz - worldCoord);
+
+    // vec3 local_normal = texture(normalSampler, skyCoord);
 
     float illumination = 0;
     for (uint index = 0; index < lights_ubo.num_lights; index++) {

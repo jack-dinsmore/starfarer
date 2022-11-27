@@ -1,18 +1,16 @@
-use lepton::prelude::*;
 use serde::{Serialize, Deserialize};
 use cgmath::{Vector3, Matrix4, Matrix3, Quaternion};
 use super::primitives::*;
-use std::rc::Rc;
 
 pub struct PartState {
-    pub model: Option<Rc<Model>>,
+    pub id: PartID,
     pub matrix: Matrix4<f32>,
 }
 impl PartState {
-    pub fn from_instance(instance: PartInstance, model: Rc<Model> ) -> Self {
+    pub fn from_instance(instance: PartInstance) -> Self {
         let rotation = Matrix4::from(Matrix3::from(instance.orientation.cast().unwrap()));
         Self {
-            model: Some(model),
+            id: instance.id,
             matrix: Matrix4::from_translation(instance.position) * rotation,
         }
     }

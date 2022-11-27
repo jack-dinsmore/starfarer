@@ -88,7 +88,7 @@ impl Planet {
         // Manage switches
         for switch in self.model_switches.iter_mut() {
             if let Ok(data) = switch.2.try_recv() {
-                let new_model = Model::new(graphics, shader, VertexType::Specified(data.0, data.1), Vec::new()).unwrap();
+                let new_model = Model::new(graphics, shader, VertexType::Specified(data.0, data.1), vec![None]).unwrap();
                 self.models[switch.0].1 = match switch.1 {
                     LoadDegree::High => LoadState::High(new_model),
                     LoadDegree::Low => LoadState::Low(new_model),

@@ -21,7 +21,7 @@ const WINDOW_TITLE: &str = "Starfarer";
 const WINDOW_WIDTH: u32 = 1920;
 const WINDOW_HEIGHT: u32 = 1080;
 const LOOK_SENSITIVITY: f32 = 0.1;
-const NUM_SHADERS: usize = 100;
+const NUM_SHADERS: usize = 256;
 const MOVE_SENSITIVITY: f32 = 100.0;
 pub const G: f64 = 1.5e1;
 
@@ -33,14 +33,15 @@ struct Starfarer {
     skybox: Skybox,
     lights: builtin::Lights,
     key_tracker: KeyTracker,
-    last_deltas: (f64, f64),
-    solar_system: SolarSystem,
+    ship_loader: ShipLoader,
     threadpool: ThreadPool,
 
+    last_deltas: (f64, f64),
+    solar_system: SolarSystem,
     player: Object,
     control_ship: Option<usize>,
     ships: Vec<Ship>,
-    
+
     fps_menu: UserInterface<menus::Fps>,
     escape_menu: UserInterface<menus::Escape>,
     set_cursor_visible: bool,
@@ -59,18 +60,13 @@ impl Starfarer {
         let mut ship_loader = ShipLoader::new();
 
         let solar_system = SolarSystem::new([0;32], &mut object_manager, 0.0);
-        let planet_vel = (10_000_000.0 * G / 20_000.0).sqrt();
-        let orbit_vel = (1_000_000.0 * G / 1_100.0).sqrt();
-        println!("Main {}", orbit_vel);
 
         let ships = vec![
-            ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-                Vector3::new(18_900.0, 0.0, 0.0), Vector3::new(0.0, orbit_vel - planet_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
-            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL,
-            //     Vector3::new(9_008.0, 0.0, 0.0), Vector3::new(0.0, -5.0 - circ_vel, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::new(0.0, 0.4, 0.0)),
-            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
+            ships::Ship::new(&mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL),
+            ships::Ship::new(&mut object_manager, &mut ship_loader, ships::compiled::enterprise::KESTREL),
+            // ships::Ship::new(&mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
             //     Vector3::new(9_002.0, -2.0, 0.001), Vector3::new(0.0, 4.0 - circ_vel, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
-            // ships::Ship::load(graphics, &low_poly_shader, &mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
+            // ships::Ship::new(&mut object_manager, &mut ship_loader, ships::compiled::test::CUBE,
             //     Vector3::new(9_032.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::new(1.0, 1.0, 0.0)),
         ];
         let player = object_manager.get_object();
@@ -90,6 +86,7 @@ impl Starfarer {
             threadpool,
 
             ships,
+            ship_loader,
 
             fps_menu,
             escape_menu,
@@ -179,10 +176,10 @@ impl Renderer for Starfarer {
         }
     }
 
-    fn load_models(&mut self, _graphics: &Graphics) -> FxHashMap<Object, Vec<DrawState>> {
+    fn load_models(&mut self, graphics: &Graphics) -> FxHashMap<Object, Vec<DrawState>> {
         let mut map = FxHashMap::default();
         for ship in self.ships.iter_mut() {
-            map.insert(ship.object, ship.get_models());
+            map.insert(ship.object, ship.get_models(graphics, &self.low_poly_shader, &mut self.ship_loader));
         }
         map.insert(self.player, Vec::new());
         map
@@ -190,8 +187,17 @@ impl Renderer for Starfarer {
 
     fn load_rigid_bodies(&mut self) -> FxHashMap<Object, RigidBody> {
         let mut map = FxHashMap::default();
-        for ship in self.ships.iter_mut() {
-            map.insert(ship.object, ship.rigid_body.take().expect("Ship was created incorrectly or double loaded"));
+
+        let planet_vel = (10_000_000.0 * G / 20_000.0).sqrt();
+        let orbit_vel = (1_000_000.0 * G / 1_200.0).sqrt();
+        let initial_values = vec![
+            (Vector3::new(18_800.0, 0.0, 0.0), Vector3::new(0.0, orbit_vel - planet_vel, 0.0), Quaternion::new(1.0, 0.01, -0.02, 0.03), Vector3::zero()),
+            (Vector3::new(18_815.0, 0.0, 0.0), Vector3::new(0.0, orbit_vel - planet_vel, 0.0), Quaternion::new(0.707, -0.001, 0.707, 0.001), Vector3::zero()),
+            // (Vector3::new(9_002.0, -2.0, 0.001), Vector3::new(0.0, 4.0 - circ_vel, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)),
+            // (Vector3::new(9_032.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0), Quaternion::new(1.0, 0.71, -0.02, 0.3), Vector3::new(1.0, 1.0, 0.0)),
+        ];
+        for (ship, (pos, vel, orientation, ang_vel)) in self.ships.iter().zip(initial_values.into_iter()) {
+            map.insert(ship.object, ship.get_rigid_body(&mut self.ship_loader, pos, vel, orientation, ang_vel));
         }
         map.insert(self.player, RigidBody::new(
             Vector3::new(2.0, 0.0, 1.0), Vector3::new(0.0, 0.0, 0.0),
@@ -246,6 +252,7 @@ impl Renderer for Starfarer {
             RenderTask::ClearDepthBuffer,
             RenderTask::LoadShader(&self.low_poly_shader),
         ];
+
         for ship in &self.ships {
             tasks.push(RenderTask::DrawObject(ship.object));
         }

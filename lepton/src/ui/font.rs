@@ -56,7 +56,7 @@ impl Font {
         }
 
         let model = Model::new(graphics, shader, VertexType::Specified(vertices, indices),
-            vec![Input::new_texture(graphics, TextureType::Monochrome(bytes.0))]).expect("Could not load font");
+            vec![Some(Input::new_texture(graphics, TextureType::Monochrome(bytes.0)))]).expect("Could not load font");
 
         let kerns = {
             let i8_buffer = unsafe {

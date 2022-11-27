@@ -368,18 +368,21 @@ pub fn assess_cube(poses: [Vector3<f64>; 8], vals: [f64; 8], vertices: &mut Vec<
         let normal = [normal.x  as f32, normal.y as f32, normal.z as f32];
         vertices.push(vertex::VertexLP {
             pos: [p0.x as f32, p0.y as f32, p0.z as f32],
+            uv: [0.0, 0.0],
             normal,
             color,
             info,
         });
         vertices.push(vertex::VertexLP {
             pos: [p1.x as f32, p1.y as f32, p1.z as f32],
+            uv: [0.0, 0.0],
             normal,
             color,
             info,
         });
         vertices.push(vertex::VertexLP {
             pos: [p2.x as f32, p2.y as f32, p2.z as f32],
+            uv: [0.0, 0.0],
             normal,
             color,
             info,

@@ -1,18 +1,21 @@
 /// These are copies of lepton functions so that lepton does not have to be a depend&ency.
 use anyhow::{Result, bail};
 use std::path::Path;
-use std::io::{Read, Cursor};
+use std::io::{Read, Cursor, BufReader};
+use std::fs::File;
 use std::collections::HashMap;
 use crate::common::*;
 
 fn load_model(m: &tobj::Model, materials: &Vec<tobj::Material>, output: &mut HashMap<String, Mesh>) {
-    if !output.contains_key(&m.name) {
-        output.insert(m.name.clone(), Mesh::ModelMesh(Vec::new(), Vec::new()));
-    }
-    let (vertices, indices) = match output.get_mut(&m.name).unwrap() {
-        Mesh::ModelMesh(v, i) => (v, i),
-        _ => unreachable!(),
+    let (mut vertices, mut indices, mut normal_bytes, mut strength) = match output.remove(&m.name) {
+        Some(mesh) => match mesh {
+            Mesh::ModelMesh(v, i) => (v, i, None, None),
+            Mesh::BumpedMesh(v, i, normal_bytes, strength) => (v, i, Some(normal_bytes), Some(strength)),
+            _ => unreachable!(),
+        },
+        None => (Vec::new(), Vec::new(), None, None),
     };
+
     let material = &materials[m.mesh.material_id.unwrap()];
     let total_normals_count = m.mesh.normals.len() / 3;
     let total_vertices_count = m.mesh.positions.len() / 3;
@@ -26,12 +29,21 @@ fn load_model(m: &tobj::Model, materials: &Vec<tobj::Material>, output: &mut Has
 
     vertices.reserve(total_normals_count);
     for i in 0..total_normals_count {
+        let texcoords = if m.mesh.texcoords.len() > 0 {
+            [
+                m.mesh.texcoords[i * 2],
+                m.mesh.texcoords[i * 2 + 1],
+            ]
+        } else {
+            [0.0,0.0]
+        };
         let vertex = VertexLP {
             pos: [
                 m.mesh.positions[i * 3],
                 m.mesh.positions[i * 3 + 1],
                 m.mesh.positions[i * 3 + 2],
             ],
+            uv: texcoords,
             normal: [
                 m.mesh.normals[i * 3],
                 m.mesh.normals[i * 3 + 1],
@@ -50,6 +62,34 @@ fn load_model(m: &tobj::Model, materials: &Vec<tobj::Material>, output: &mut Has
             ],
         };
         vertices.push(vertex);
+    }
+
+    if !material.normal_texture.is_empty() {
+        // Get strength and path
+        let words = material.normal_texture.split_whitespace().collect::<Vec<_>>();
+        if words.len() != 3 {
+            panic!("Material normal texture {} was improperly formatted", material.normal_texture);
+        }
+        
+        strength = Some(words[1].parse().unwrap());
+
+        let path = words[2];
+        // Load the normal texture file
+        let f = match File::open(&path) {
+            Ok(f) => f,
+            Err(_) => panic!("File {} did not exist", path)
+        };
+        let mut reader = BufReader::new(f);
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer).unwrap();
+
+        normal_bytes = Some(buffer);
+    }
+
+    if normal_bytes.is_some() {
+        output.insert(m.name.clone(), Mesh::BumpedMesh(vertices, indices, normal_bytes.unwrap(), strength.unwrap()));
+    } else {
+        output.insert(m.name.clone(), Mesh::ModelMesh(vertices, indices));
     }
 }
 

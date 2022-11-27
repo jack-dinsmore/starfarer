@@ -81,7 +81,6 @@ impl<'a, V: Vertex> VertexType<'a, V> {
 pub enum TextureType<'a> {
     Mipmap(&'a [u8]),
     Transparency(&'a [u8]),
-    Solid(&'a [u8]),
     Monochrome(&'a [u8]),
     Blank,
 }

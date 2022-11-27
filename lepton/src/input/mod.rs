@@ -57,7 +57,6 @@ impl Input {
         let (image, format, mipmap) = match texture_type {
             TextureType::Mipmap(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, true),
             TextureType::Transparency(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8A8_SRGB, false),
-            TextureType::Solid(b) => (Some(TextureType::to_image(b)), vk::Format::R8G8B8_SRGB, false),
             TextureType::Monochrome(b) => (Some(TextureType::to_image(b)), vk::Format::R8_SRGB, false),
             TextureType::Blank => (None, vk::Format::R8_SRGB, false),
         };
@@ -238,6 +237,7 @@ impl Graphics {
                 let (image_width, image_height) = (io.width(), io.height());
                 let (image_data, word_width) = match format {
                     vk::Format::R8G8B8A8_SRGB => (io.to_rgba8().into_raw(), 4),
+                    vk::Format::R8G8B8_SRGB => (io.to_rgb8().into_raw(), 3),
                     vk::Format::R8_SRGB => (io.to_luma8().into_raw(), 1),
                     _ => panic!("Image format {:?} is not supported.", format)
                 };

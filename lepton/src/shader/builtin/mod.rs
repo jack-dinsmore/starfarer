@@ -60,5 +60,6 @@ impl Signature for LPSignature {
     const FRAGMENT_CODE: &'static [u32] = include_glsl!("src/shader/builtin/lp.frag", kind: frag);const INPUTS: &'static [InputType] = &[
         InputType::Camera,
         InputType::Lights,
+        InputType::Texture{level: InputLevel::Model},
     ];
 }

@@ -48,7 +48,7 @@ impl Skybox {
             graphics, 
             &skybox_shader,
             VertexType::<vertex::VertexModel>::skybox(), 
-            vec![Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../../assets/temp/skybox.png")))]
+            vec![Some(Input::new_texture(graphics, TextureType::Transparency(include_bytes!("../../assets/temp/skybox.png"))))]
         ).expect("Model creation failed"));
 
         Self {

@@ -115,6 +115,7 @@ impl Vertex for Vertex2Tex {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VertexLP {
     pub pos: [f32; 3],
+    pub uv: [f32; 2],
     pub normal: [f32; 3],
     pub color: [f32; 4],
     pub info: [f32; 3],
@@ -138,18 +139,24 @@ impl Vertex for VertexLP {
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 1,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: offset_of!(Self, uv) as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 2,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Self, normal) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
-                location: 2,
+                location: 3,
                 format: vk::Format::R32G32B32A32_SFLOAT,
                 offset: offset_of!(Self, color) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
-                location: 3,
+                location: 4,
                 format: vk::Format::R32G32B32_SFLOAT,
                 offset: offset_of!(Self, info) as u32,
             },

@@ -16,14 +16,16 @@ layout (binding = 0) uniform CameraData {
 } camera_ubo;
 
 layout (location = 0) in vec3 inPosition;
-layout (location = 1) in vec3 inNormal;
-layout (location = 2) in vec4 inColor;
-layout (location = 3) in vec3 inInfo;
+layout (location = 1) in vec2 inUV;
+layout (location = 2) in vec3 inNormal;
+layout (location = 3) in vec4 inColor;
+layout (location = 4) in vec3 inInfo;
 
 layout (location = 0) out vec3 worldCoord;
-layout (location = 1) out vec3 fragNormal;
-layout (location = 2) out vec4 fragColor;
-layout (location = 3) out vec3 fragInfo;
+layout (location = 1) out vec2 fragUV;
+layout (location = 2) out vec3 fragNormal;
+layout (location = 3) out vec4 fragColor;
+layout (location = 4) out vec3 fragInfo;
 
 out gl_PerVertex {
     vec4 gl_Position;
@@ -35,4 +37,5 @@ void main() {
     fragNormal = (constants.rotation * vec4(inNormal, 1.0)).xyz;
     fragColor = inColor;
     fragInfo = inInfo;
+    fragUV = inUV;
 }

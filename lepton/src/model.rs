@@ -16,7 +16,7 @@ pub struct Model {
     index_buffer_memory: vk::DeviceMemory,
     num_indices: u32,
     
-    inputs: Vec<Input>,
+    inputs: Vec<Option<Input>>,
     descriptor_set: Option<DoubleBuffered<vk::DescriptorSet>>,
     descriptor_bind_index: u32,
     delete_sender: Option<Sender<Deletable>>,
@@ -29,7 +29,7 @@ pub enum DrawState {
 
 // Constructors
 impl Model {
-    pub fn new<'a, V: Vertex, S: Signature>(graphics: &Graphics, shader: &Shader<S>, vertex_type: VertexType<'a, V>, inputs: Vec<Input>) -> Result<Self> {
+    pub fn new<'a, V: Vertex, S: Signature>(graphics: &Graphics, shader: &Shader<S>, vertex_type: VertexType<'a, V>, inputs: Vec<Option<Input>>) -> Result<Self> {
 
         let ((vertex_buffer, vertex_buffer_memory), (index_buffer, index_buffer_memory), num_indices) = match vertex_type {
             VertexType::Specified(v, i) => (graphics.create_vertex_buffer(&v), graphics.create_index_buffer(&i), i.len() as u32),
@@ -58,7 +58,7 @@ impl Model {
         Ok(model)
     }
 
-    fn create_descriptor_sets<S: Signature>(graphics: &Graphics, shader: &Shader<S>, inputs: &Vec<Input>) -> Option<DoubleBuffered<vk::DescriptorSet>> {
+    fn create_descriptor_sets<S: Signature>(graphics: &Graphics, shader: &Shader<S>, inputs: &Vec<Option<Input>>) -> Option<DoubleBuffered<vk::DescriptorSet>> {
         match shader.model_descriptor_set_layout {
             Some(layout) => {
                 let model_descriptor_set = graphics.allocate_descriptor_set(layout);
@@ -68,7 +68,10 @@ impl Model {
                         if local_index >= inputs.len() {
                             panic!("Too few inputs were provided for the creation of this model")
                         }
-                        inputs[local_index].add_descriptor(&model_descriptor_set, i as u32);
+                        match &inputs[local_index] {
+                            Some(input) => input.add_descriptor(&model_descriptor_set, i as u32),
+                            None => break,
+                        };
                         local_index += 1;
                     }
                 }

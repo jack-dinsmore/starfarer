@@ -128,6 +128,10 @@ Added the sun
 
 Made the sun bright and fixed up the sky.
 
+## Nov 25
+
+Made a lot of progress on the normal map code. Still need to pass in the strength of the adjustment and implement the normal altering, and I also need to fix the jagged textures issue.
+
 # To do
 
 ## Features
